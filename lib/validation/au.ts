@@ -1,0 +1,6 @@
+/** Shared server/client validation helpers. Persist only normalized forms. */
+export function normaliseAuMobile(value:string) { const cleaned=value.replace(/[\s()-]/g,''); const local=cleaned.replace(/^\+61/,'0'); if(!/^04\d{8}$/.test(local)) return null; return '+61'+local.slice(1); }
+export function isValidEmail(value:string) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(value); }
+const stateRanges:Record<string, Array<[number,number]>>={NSW:[[1000,2599],[2619,2899],[2921,2999]],ACT:[[200,299],[2600,2618],[2900,2920]],VIC:[[3000,3999],[8000,8999]],QLD:[[4000,4999],[9000,9999]],SA:[[5000,5999]],WA:[[6000,6999]],TAS:[[7000,7999]],NT:[[800,999]]};
+export function isValidPostcodeForState(postcode:string,state:string) { const n=Number(postcode); return /^\d{4}$/.test(postcode) && (stateRanges[state]||[]).some(([from,to])=>n>=from&&n<=to); }
+export function isValidRego(rego:string,state:string) { const value=rego.replace(/[\s-]/g,'').toUpperCase(); const formats:Record<string,RegExp>={NSW:/^[A-Z0-9]{2,6}$/,VIC:/^[A-Z]{3}\d{3}$|^\d[A-Z]{2}\d{3}$/,QLD:/^[A-Z0-9]{3,6}$/,SA:/^[A-Z]{3}\d{3}$|^S\d{6}$/,WA:/^[A-Z0-9]{1,6}$/,TAS:/^[A-Z]\d{2}[A-Z]{2}$/,ACT:/^[A-Z0-9]{2,6}$/,NT:/^[A-Z0-9]{2,6}$/}; return (formats[state]||/^[A-Z0-9]{2,10}$/).test(value); }

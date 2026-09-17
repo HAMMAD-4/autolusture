@@ -1,0 +1,1 @@
+import { SiteNav,SiteFooter } from '@/components/site-shell';import { BookingForm } from '@/components/booking-form';export default function Booking(){return <><SiteNav/><main className="booking-shell"><BookingForm/></main><SiteFooter/></>}

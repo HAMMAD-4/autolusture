@@ -1,0 +1,3 @@
+import { NextResponse } from 'next/server';
+import { authenticate, makeSession, sessionCookie } from '@/lib/auth/local';
+export async function POST(request:Request) { const {email,password,next} = await request.json() as {email?:string;password?:string;next?:string}; if(!email||!password)return NextResponse.json({error:'Email and password are required.'},{status:400}); const user=await authenticate(email,password); if(!user)return NextResponse.json({error:'Incorrect email or password.'},{status:401}); const destination=user.role==='admin'?'/portal/admin':'/portal/rep'; const response=NextResponse.json({ok:true,next:next===destination?next:destination}); response.cookies.set(sessionCookie.name,makeSession(user),sessionCookie.options); return response; }
