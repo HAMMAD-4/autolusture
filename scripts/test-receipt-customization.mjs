@@ -94,10 +94,114 @@ async function runTests() {
     throw new Error('Verification failed: saved data did not match');
   }
 
-  console.log('=== ALL RECEIPT CUSTOMIZATION TESTS PASSED ===');
+  // 7. Test Invalid tax_mode rejection
+  const invalidTaxModeRes = await fetch(`${BASE_URL}/api/admin/receipt-settings`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', cookie: cookies || '' },
+    body: JSON.stringify({
+      ...verifyData.settings,
+      tax_mode: 'unsupported_mode'
+    })
+  });
+  if (invalidTaxModeRes.status === 400) {
+    console.log('7. Reject invalid tax_mode: PASS (400 Bad Request)');
+  } else {
+    throw new Error(`Expected 400 for invalid tax_mode, got ${invalidTaxModeRes.status}`);
+  }
+
+  // 8. Test Invalid tax_rate rejection (< 0)
+  const invalidTaxRateRes = await fetch(`${BASE_URL}/api/admin/receipt-settings`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', cookie: cookies || '' },
+    body: JSON.stringify({
+      ...verifyData.settings,
+      tax_rate: -5
+    })
+  });
+  if (invalidTaxRateRes.status === 400) {
+    console.log('8. Reject negative tax_rate: PASS (400 Bad Request)');
+  } else {
+    throw new Error(`Expected 400 for negative tax_rate, got ${invalidTaxRateRes.status}`);
+  }
+
+  // 9. Test Valid Exclusive Tax Configuration Update
+  const updateExclusiveTaxRes = await fetch(`${BASE_URL}/api/admin/receipt-settings`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', cookie: cookies || '' },
+    body: JSON.stringify({
+      ...verifyData.settings,
+      tax_mode: 'exclusive',
+      tax_type: 'percentage',
+      tax_rate: 10,
+      tax_label: 'GST'
+    })
+  });
+  if (!updateExclusiveTaxRes.ok) {
+    throw new Error(`Exclusive tax PATCH failed: ${updateExclusiveTaxRes.status}`);
+  }
+  const checkExclusiveRes = await fetch(`${BASE_URL}/api/admin/receipt-settings`, {
+    headers: { cookie: cookies || '' }
+  });
+  const checkExclusiveData = await checkExclusiveRes.json();
+  if (
+    checkExclusiveData.settings.tax_mode === 'exclusive' &&
+    checkExclusiveData.settings.tax_type === 'percentage' &&
+    Number(checkExclusiveData.settings.tax_rate) === 10 &&
+    checkExclusiveData.settings.tax_label === 'GST'
+  ) {
+    console.log('9. Update and verify Exclusive % Tax settings: PASS');
+  } else {
+    throw new Error('Verification of exclusive tax failed');
+  }
+
+  // 10. Test Valid Inclusive Fixed AUD Tax Configuration Update
+  const updateFixedTaxRes = await fetch(`${BASE_URL}/api/admin/receipt-settings`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', cookie: cookies || '' },
+    body: JSON.stringify({
+      ...verifyData.settings,
+      tax_mode: 'inclusive',
+      tax_type: 'fixed',
+      tax_rate: 50.00,
+      tax_label: 'Fixed Detailing Levy'
+    })
+  });
+  if (!updateFixedTaxRes.ok) {
+    throw new Error(`Fixed tax PATCH failed: ${updateFixedTaxRes.status}`);
+  }
+  const checkFixedRes = await fetch(`${BASE_URL}/api/admin/receipt-settings`, {
+    headers: { cookie: cookies || '' }
+  });
+  const checkFixedData = await checkFixedRes.json();
+  if (
+    checkFixedData.settings.tax_mode === 'inclusive' &&
+    checkFixedData.settings.tax_type === 'fixed' &&
+    Number(checkFixedData.settings.tax_rate) === 50 &&
+    checkFixedData.settings.tax_label === 'Fixed Detailing Levy'
+  ) {
+    console.log('10. Update and verify Inclusive Fixed AUD Tax settings: PASS');
+  } else {
+    throw new Error('Verification of fixed tax failed');
+  }
+
+  // 11. Restore Australian Standard GST (inclusive, 10%, GST)
+  await fetch(`${BASE_URL}/api/admin/receipt-settings`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', cookie: cookies || '' },
+    body: JSON.stringify({
+      ...verifyData.settings,
+      tax_mode: 'inclusive',
+      tax_type: 'percentage',
+      tax_rate: 10,
+      tax_label: 'GST'
+    })
+  });
+  console.log('11. Restored standard Australian GST defaults (10% inclusive): PASS');
+
+  console.log('=== ALL RECEIPT & TAX CUSTOMIZATION TESTS PASSED ===');
 }
 
 runTests().catch((err) => {
-  console.error('Test error:', err);
+  console.error('Test failed:', err);
   process.exit(1);
 });

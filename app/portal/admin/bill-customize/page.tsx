@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { PortalShell } from '@/components/portal-shell';
-import type { ReceiptCustomizationSettings, TaxReceiptData } from '@/components/tax-receipt-modal';
+import { TaxReceiptModal, type ReceiptCustomizationSettings, type TaxReceiptData } from '@/components/tax-receipt-modal';
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2MB
 const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
@@ -12,6 +12,7 @@ export default function BillCustomizePage() {
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [showTestModal, setShowTestModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<ReceiptCustomizationSettings>({
@@ -24,10 +25,14 @@ export default function BillCustomizePage() {
     terms_conditions: `1. Payment is strictly settled upon completion of detailing services.
 2. 30-Day studio workmanship warranty on all ceramic protection & paint correction applications.
 3. AutoLustre is not liable for pre-existing vehicle wear or loose trim recorded prior to service.
-4. All tax invoices comply with Australian Taxation Office (ATO) GST requirements under A New Tax System (Goods and Services Tax) Act 1999.`,
+4. All prices in AUD. Issued in accordance with Australian Consumer Law and Division 29 of A New Tax System (Goods and Services Tax) Act 1999.`,
     signature_image_data: null,
     signatory_name: 'Hammad Saifullah',
-    signatory_title: 'Quality Assurance & Studio Director'
+    signatory_title: 'Quality Assurance & Studio Director',
+    tax_mode: 'inclusive',
+    tax_type: 'percentage',
+    tax_rate: 10,
+    tax_label: 'GST'
   });
 
   // Mock receipt data for live preview
@@ -87,7 +92,11 @@ export default function BillCustomizePage() {
             terms_conditions: data.settings.terms_conditions || '',
             signature_image_data: data.settings.signature_image_data || null,
             signatory_name: data.settings.signatory_name || '',
-            signatory_title: data.settings.signatory_title || ''
+            signatory_title: data.settings.signatory_title || '',
+            tax_mode: data.settings.tax_mode || 'inclusive',
+            tax_type: data.settings.tax_type || 'percentage',
+            tax_rate: data.settings.tax_rate !== undefined && data.settings.tax_rate !== null ? Number(data.settings.tax_rate) : 10,
+            tax_label: data.settings.tax_label || 'GST'
           });
         }
       })
@@ -99,10 +108,11 @@ export default function BillCustomizePage() {
       });
   }, []);
 
-  const handleTextChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleTextChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
     setForm((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value
+      [name]: name === 'tax_rate' ? (value === '' ? '' : Number(value)) : value
     }));
   };
 
@@ -179,8 +189,51 @@ export default function BillCustomizePage() {
   };
 
   const handleTestPrint = () => {
-    window.print();
+    setShowTestModal(true);
   };
+
+  // Dynamic calculations for live docket preview
+  const previewTaxMode = (form.tax_mode || 'inclusive') as 'inclusive' | 'exclusive';
+  const previewTaxType = (form.tax_type || 'percentage') as 'percentage' | 'fixed';
+  const previewTaxRate = Number(form.tax_rate ?? 10);
+  const previewTaxLabel = form.tax_label?.trim() || 'GST';
+  const previewBaseAmount = 899.00;
+
+  let previewSubtotal = 0;
+  let previewTaxAmount = 0;
+  let previewTotal = 0;
+  let previewTaxLabelDisplay = '';
+
+  if (previewTaxMode === 'exclusive') {
+    if (previewTaxType === 'percentage') {
+      previewSubtotal = previewBaseAmount;
+      previewTaxAmount = (previewBaseAmount * previewTaxRate) / 100;
+      previewTotal = previewSubtotal + previewTaxAmount;
+      previewTaxLabelDisplay = `${previewTaxLabel} (${previewTaxRate}% excl.):`;
+    } else {
+      previewSubtotal = previewBaseAmount;
+      previewTaxAmount = previewTaxRate;
+      previewTotal = previewSubtotal + previewTaxAmount;
+      previewTaxLabelDisplay = `${previewTaxLabel} ($${previewTaxRate.toFixed(2)} excl.):`;
+    }
+  } else {
+    // Inclusive
+    if (previewTaxType === 'percentage') {
+      previewSubtotal = previewBaseAmount / (1 + (previewTaxRate / 100));
+      previewTaxAmount = previewBaseAmount - previewSubtotal;
+      previewTotal = previewBaseAmount;
+      previewTaxLabelDisplay = `${previewTaxLabel} (${previewTaxRate}% incl.):`;
+    } else {
+      previewTaxAmount = Math.min(previewBaseAmount, previewTaxRate);
+      previewSubtotal = Math.max(0, previewBaseAmount - previewTaxAmount);
+      previewTotal = previewBaseAmount;
+      previewTaxLabelDisplay = `${previewTaxLabel} ($${previewTaxRate.toFixed(2)} incl.):`;
+    }
+  }
+
+  const previewDisplaySubtotal = `$${previewSubtotal.toFixed(2)} AUD`;
+  const previewDisplayTax = `$${previewTaxAmount.toFixed(2)} AUD`;
+  const previewDisplayTotal = `$${previewTotal.toFixed(2)} AUD`;
 
   return (
     <PortalShell role="admin">
@@ -322,10 +375,89 @@ export default function BillCustomizePage() {
               </div>
             </section>
 
-            {/* Panel 2: Terms & Conditions */}
+            {/* Panel 2: Tax & GST Calculation Rules */}
             <section className="panel" style={{ margin: 0 }}>
               <div style={{ borderBottom: '1px solid #edf1ed', paddingBottom: 12, marginBottom: 16 }}>
-                <h2 style={{ margin: 0, fontSize: 16 }}>2. Terms, Conditions & Warranty Disclaimer</h2>
+                <h2 style={{ margin: 0, fontSize: 16 }}>2. Tax & GST Calculation Rules</h2>
+                <small style={{ color: '#667376' }}>Configure tax application mode, rates, and Australian tax invoice labels</small>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>
+                      Tax Application Mode *
+                    </label>
+                    <select
+                      name="tax_mode"
+                      value={form.tax_mode || 'inclusive'}
+                      onChange={handleTextChange}
+                      style={{ width: '100%', padding: '10px 12px', fontSize: 13, borderRadius: 8, border: '1px solid #dce2dc', background: '#fff' }}
+                    >
+                      <option value="inclusive">Inclusive (Tax included in price)</option>
+                      <option value="exclusive">Exclusive (Tax added on top of price)</option>
+                    </select>
+                    <small style={{ color: '#667376', fontSize: 11, marginTop: 4, display: 'block' }}>
+                      Standard Australian retail detailing is GST inclusive.
+                    </small>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>
+                      Tax Label / Code *
+                    </label>
+                    <input
+                      type="text"
+                      name="tax_label"
+                      value={form.tax_label || ''}
+                      onChange={handleTextChange}
+                      required
+                      style={{ width: '100%', padding: '10px 12px', fontSize: 13, borderRadius: 8, border: '1px solid #dce2dc' }}
+                      placeholder="e.g. GST"
+                    />
+                    <small style={{ color: '#667376', fontSize: 11, marginTop: 4, display: 'block' }}>
+                      Tax descriptor shown on invoices (e.g. GST, Sales Tax).
+                    </small>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 5 }}>
+                    Tax Rate Value & Unit *
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px', gap: 10 }}>
+                    <input
+                      type="number"
+                      name="tax_rate"
+                      min="0"
+                      step="0.01"
+                      value={form.tax_rate ?? ''}
+                      onChange={handleTextChange}
+                      required
+                      style={{ width: '100%', padding: '10px 12px', fontSize: 13, borderRadius: 8, border: '1px solid #dce2dc' }}
+                      placeholder="e.g. 10"
+                    />
+                    <select
+                      name="tax_type"
+                      value={form.tax_type || 'percentage'}
+                      onChange={handleTextChange}
+                      style={{ width: '100%', padding: '10px 12px', fontSize: 13, borderRadius: 8, border: '1px solid #dce2dc', background: '#fff', fontWeight: 700 }}
+                    >
+                      <option value="percentage">% (Percent)</option>
+                      <option value="fixed">$ (Fixed AUD)</option>
+                    </select>
+                  </div>
+                  <small style={{ color: '#667376', fontSize: 11, marginTop: 4, display: 'block' }}>
+                    Australian GST is standard 10%. Value dynamically updates docket calculations in real time.
+                  </small>
+                </div>
+              </div>
+            </section>
+
+            {/* Panel 3: Terms & Conditions */}
+            <section className="panel" style={{ margin: 0 }}>
+              <div style={{ borderBottom: '1px solid #edf1ed', paddingBottom: 12, marginBottom: 16 }}>
+                <h2 style={{ margin: 0, fontSize: 16 }}>3. Terms, Conditions & Warranty Disclaimer</h2>
                 <small style={{ color: '#667376' }}>Printed on the lower section of the customer receipt docket</small>
               </div>
 
@@ -356,11 +488,11 @@ export default function BillCustomizePage() {
               </div>
             </section>
 
-            {/* Panel 3: Authorized Signature Upload */}
+            {/* Panel 4: Authorized Signature Upload */}
             <section className="panel" style={{ margin: 0 }}>
               <div style={{ borderBottom: '1px solid #edf1ed', paddingBottom: 12, marginBottom: 16 }}>
-                <h2 style={{ margin: 0, fontSize: 16 }}>3. Verification Signature & Stamp</h2>
-                <small style={{ color: '#667376' }}>Official manager signature image printed on the receipt for ATO validation</small>
+                <h2 style={{ margin: 0, fontSize: 16 }}>4. Verification Signature & Stamp</h2>
+                <small style={{ color: '#667376' }}>Official manager signature image printed on the receipt for legal validation</small>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -408,7 +540,7 @@ export default function BillCustomizePage() {
                     <img
                       src={form.signature_image_data}
                       alt="Uploaded Signature Preview"
-                      style={{ maxHeight: 60, maxWidth: 220, objectFit: 'contain', margin: '0 auto' }}
+                      style={{ maxHeight: 85, maxWidth: 260, objectFit: 'contain', margin: '0 auto' }}
                     />
                   </div>
                 )}
@@ -470,7 +602,7 @@ export default function BillCustomizePage() {
 
             {/* Live Receipt Card */}
             <div
-              id="tax-receipt-printable"
+              id="tax-receipt-live-preview"
               className="tax-receipt-card"
               style={{
                 background: '#ffffff',
@@ -558,7 +690,7 @@ export default function BillCustomizePage() {
                         </div>
                       </td>
                       <td style={{ padding: '8px 0', textAlign: 'right', verticalAlign: 'top', fontWeight: 700, color: '#0d1517' }}>
-                        {sampleReceipt.payment.totalAmount}
+                        {previewDisplayTotal}
                       </td>
                     </tr>
                   </tbody>
@@ -573,22 +705,22 @@ export default function BillCustomizePage() {
                   </div>
                   <div style={{ fontSize: 10, color: '#667376', marginTop: 4, lineHeight: 1.3 }}>
                     Method: <b>{sampleReceipt.payment.method}</b><br />
-                    ATO Compliant.
+                    Valid Tax Invoice issued in compliance with Division 29 of A New Tax System (Goods and Services Tax) Act 1999.
                   </div>
                 </div>
 
                 <div style={{ width: 170, fontSize: 11 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
                     <span style={{ color: '#667376' }}>Subtotal:</span>
-                    <span>{sampleReceipt.payment.subtotalExGst}</span>
+                    <span>{previewDisplaySubtotal}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, color: '#667376' }}>
-                    <span>GST (10%):</span>
-                    <span>{sampleReceipt.payment.gstAmount}</span>
+                    <span>{previewTaxLabelDisplay}</span>
+                    <span>{previewDisplayTax}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #0d1517', paddingTop: 4, fontSize: 12, fontWeight: 800, color: '#0d1517' }}>
                     <span>Total Paid:</span>
-                    <span>{sampleReceipt.payment.totalAmount}</span>
+                    <span>{previewDisplayTotal}</span>
                   </div>
                 </div>
               </div>
@@ -612,18 +744,18 @@ export default function BillCustomizePage() {
                     Verified & Audited
                   </div>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 2, background: '#eef4ed', color: '#27522b', padding: '2px 5px', borderRadius: 4, fontSize: 9, fontWeight: 700 }}>
-                    <span>✓</span> Officially Issued
+                    <span>✓</span> Division 29 GST Act Compliant · Official Seal
                   </div>
                 </div>
 
-                <div style={{ textAlign: 'right', minWidth: 120 }}>
+                <div style={{ textAlign: 'right', minWidth: 140 }}>
                   {form.signature_image_data ? (
-                    <div style={{ marginBottom: 2 }}>
+                    <div style={{ marginBottom: 4 }}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={form.signature_image_data}
                         alt="Authorized Verification Signature"
-                        style={{ height: 36, maxWidth: 130, objectFit: 'contain', display: 'inline-block' }}
+                        style={{ height: 58, maxWidth: 190, objectFit: 'contain', display: 'inline-block' }}
                       />
                     </div>
                   ) : (
@@ -638,6 +770,16 @@ export default function BillCustomizePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Test Print Modal Portal */}
+      {showTestModal && (
+        <TaxReceiptModal
+          receipt={sampleReceipt}
+          customSettings={form}
+          autoPrint={true}
+          onClose={() => setShowTestModal(false)}
+        />
       )}
     </PortalShell>
   );

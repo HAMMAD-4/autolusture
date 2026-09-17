@@ -54,23 +54,7 @@ export default function Gallery() {
                   }}
                 />
                 <div className="result-tag gallery-tag">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)' }}>{item.title}</span>
-                    {item.isLiveDb && (
-                      <span
-                        style={{
-                          background: '#1d6960',
-                          color: '#fff',
-                          fontSize: 9,
-                          fontWeight: 800,
-                          padding: '2px 5px',
-                          borderRadius: 4
-                        }}
-                      >
-                        LIVE DB
-                      </span>
-                    )}
-                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)', display: 'block' }}>{item.title}</span>
                   <small style={{ fontSize: 11, color: '#667376', display: 'block', marginTop: 2 }}>
                     {item.subtitle}
                   </small>

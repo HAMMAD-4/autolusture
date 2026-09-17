@@ -63,68 +63,221 @@ button {
 
 /* Site Navigation */
 .site-header {
-  position: relative;
-  z-index: 50;
-  background: var(--paper);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(15, 24, 26, 0.96);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .nav {
-  height: 78px;
+  height: 80px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(13, 21, 23, 0.12);
 }
 
-.brand {
-  font-weight: 800;
-  letter-spacing: -1.4px;
-  font-size: 22px;
+.brand-logo-link {
+  display: flex;
+  align-items: center;
 }
 
-.brand i {
-  font-family: 'Playfair Display', serif;
-  font-weight: 600;
+.brand-logo-img {
+  height: 46px;
+  width: auto;
+  object-fit: contain;
+  display: block;
 }
 
 .navlinks {
   display: flex;
-  gap: 28px;
+  align-items: center;
+  gap: 32px;
   font-size: 13px;
   font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.navlinks a {
+.navlink-item {
+  position: relative;
+  color: #cbd5d2;
+  text-decoration: none;
+  padding: 6px 0;
   transition: color 0.15s ease;
 }
 
-.navlinks a:hover {
-  color: #43625f;
+.navlink-item:hover {
+  color: #ffffff;
+}
+
+.navlink-item.active {
+  color: #c8f25d;
+}
+
+.navlink-active-bar {
+  position: absolute;
+  bottom: -6px;
+  left: 0;
+  right: 0;
+  height: 2.5px;
+  background: #c8f25d;
+  border-radius: 2px;
 }
 
 .nav-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+}
+
+.book-now-btn {
+  background: #c8f25d;
+  color: #0d1517;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  padding: 10px 24px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.book-now-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(200, 242, 93, 0.35);
+  background: #d4f938;
 }
 
 .nav-toggle {
   display: none;
-  border: 1px solid rgba(13, 21, 23, 0.15);
-  background: var(--white);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
   font-size: 20px;
   width: 44px;
   height: 44px;
   border-radius: 12px;
   align-items: center;
   justify-content: center;
-  color: var(--ink);
+  color: #ffffff;
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
 .nav-toggle:hover {
-  background: #e8ede7;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Site Footer */
+.site-footer {
+  background: #162224;
+  color: #cbd5d2;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.footer-top-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 1.2fr;
+  gap: 40px;
+  padding: 60px 0 42px;
+}
+
+.footer-column-title {
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.footer-accent-bar {
+  width: 26px;
+  height: 2.5px;
+  background: #c8f25d;
+  border-radius: 2px;
+  margin-bottom: 18px;
+}
+
+.footer-link {
+  display: block;
+  color: #92a4a1;
+  font-size: 13px;
+  margin-bottom: 10px;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.footer-link:hover {
+  color: #c8f25d;
+}
+
+.footer-social-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #cbd5d2;
+  margin-right: 10px;
+  transition: all 0.2s ease;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.footer-social-btn:hover {
+  border-color: #c8f25d;
+  color: #c8f25d;
+  background: rgba(200, 242, 93, 0.08);
+}
+
+.footer-contact-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  color: #92a4a1;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.footer-contact-item a {
+  color: #92a4a1;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.footer-contact-item a:hover {
+  color: #c8f25d;
+}
+
+.footer-bottom-bar {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 22px 0 26px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .footer-top-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+}
+
+@media (max-width: 600px) {
+  .footer-top-grid {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
 }
 
 /* Mobile Menu Wrapper */
@@ -271,6 +424,11 @@ button {
   grid-template-columns: 1.05fr 0.95fr;
   gap: 50px;
   align-items: end;
+}
+
+.wrap.hero {
+  padding-left: 28px;
+  padding-right: 28px;
 }
 
 .hero h1 {
@@ -1076,6 +1234,10 @@ button {
     padding: 36px 0;
     gap: 28px;
   }
+  .wrap.hero {
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+  }
   .hero h1 {
     font-size: 38px;
     letter-spacing: -2px;
@@ -1454,70 +1616,699 @@ button {
   }
 }
 
+
+/* ════════════════════════════════════════════════════════════
+   REVIEWS PAGE — Dark unified theme
+   ════════════════════════════════════════════════════════════ */
+.reviews-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin: 36px 0 36px;
+}
+
+.reviews-stat-tile {
+  background: #162224;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px;
+  padding: 22px 18px;
+  text-align: center;
+}
+
+.reviews-stat-value {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  color: #c8f25d;
+  line-height: 1;
+}
+
+.reviews-stat-label {
+  font-size: 11px;
+  color: #6a8a86;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 6px;
+}
+
+.reviews-filter-wrap {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 32px;
+}
+
+.reviews-filter-btn {
+  padding: 8px 18px;
+  border-radius: 100px;
+  border: 1px solid #d9ddd6;
+  background: #f5f3ed;
+  color: #0d1517;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.reviews-filter-btn:hover {
+  border-color: #102021;
+  background: #e8e6df;
+}
+
+.reviews-filter-btn.active {
+  background: #1a1a1a;
+  color: #f5f3ed;
+  border-color: #1a1a1a;
+}
+
+.reviews-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+  padding-bottom: 60px;
+}
+
+.review-card {
+  background: #f5f3ed;
+  border: 1px solid #d9ddd6;
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.review-card:hover {
+  background: #102021;
+  border-color: rgba(200, 242, 93, 0.35);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+}
+
+.review-card:hover .review-card-name {
+  color: #ffffff !important;
+}
+
+.review-card:hover .review-card-date {
+  color: #97a8a4 !important;
+}
+
+.review-card:hover .review-card-body {
+  color: #cbd5d2 !important;
+}
+
+.review-card:hover .review-avatar {
+  background: #c8f25d;
+  color: #0d1517;
+}
+
+.review-card:hover .review-tag-service {
+  background: rgba(200, 242, 93, 0.15);
+  color: #c8f25d;
+  border-color: rgba(200, 242, 93, 0.3);
+}
+
+.review-card:hover .review-tag-vehicle {
+  background: rgba(255, 255, 255, 0.08);
+  color: #97a8a4;
+}
+
+.review-card:hover .review-card-footer {
+  border-top-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.review-card-name {
+  color: #0d1517;
+  transition: color 0.25s ease;
+}
+
+.review-card-date {
+  color: #667376;
+  transition: color 0.25s ease;
+}
+
+.review-card-body {
+  color: #2b3634;
+  transition: color 0.25s ease;
+}
+
+.review-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #1a1a1a;
+  color: #f5f3ed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 14px;
+  flex-shrink: 0;
+  letter-spacing: -0.5px;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+.review-tag-service {
+  background: #1a1a1a;
+  color: #f5f3ed;
+  border: 1px solid #1a1a1a;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 11px;
+  border-radius: 100px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  transition: all 0.25s ease;
+}
+
+.review-tag-vehicle {
+  background: #e2e6df;
+  color: #2c3e3a;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 11px;
+  border-radius: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: all 0.25s ease;
+}
+
+/* ════════════════════════════════════════════════════════════
+   SERVICES PAGE — Cream theme cards + layout
+   ════════════════════════════════════════════════════════════ */
+.services-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  padding: 56px 0 64px;
+}
+
+.svc-card {
+  display: flex;
+  flex-direction: column;
+  background: #f5f3ed;
+  border: 1px solid #d9ddd6;
+  border-radius: 18px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.25s ease, border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+  padding: 24px 22px 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.svc-card:hover {
+  background: #102021;
+  border-color: rgba(200, 242, 93, 0.35);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+}
+
+.svc-card:hover .svc-card-title {
+  color: #ffffff;
+}
+
+.svc-card:hover .svc-card-desc {
+  color: #97a8a4;
+}
+
+.svc-card:hover .svc-card-cat {
+  background: rgba(200, 242, 93, 0.15);
+  color: #c8f25d;
+  border-color: rgba(200, 242, 93, 0.3);
+}
+
+.svc-card:hover .svc-card-price {
+  color: #c8f25d;
+}
+
+.svc-card:hover .svc-card-footer {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.svc-card:hover .svc-card-duration {
+  color: #97a8a4;
+}
+
+.svc-card:hover .svc-card-link {
+  color: #c8f25d;
+}
+
+.svc-card-cat {
+  background: #102021;
+  color: #f5f3ed;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 4px 11px;
+  border-radius: 100px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition: all 0.25s ease;
+}
+
+.svc-card-price {
+  font-weight: 900;
+  font-size: 19px;
+  color: #0d1517;
+  white-space: nowrap;
+  transition: color 0.25s ease;
+}
+
+.svc-card-title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin: 0 0 9px;
+  color: #0d1517;
+  line-height: 1.2;
+  transition: color 0.25s ease;
+}
+
+.svc-card-desc {
+  font-size: 13.5px;
+  color: #3c4f4c;
+  line-height: 1.65;
+  margin: 0;
+  flex: 1;
+  transition: color 0.25s ease;
+}
+
+.svc-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 16px;
+  margin-top: 16px;
+  border-top: 1px solid #d9ddd6;
+  transition: border-color 0.25s ease;
+}
+
+.svc-card-duration {
+  font-size: 12px;
+  color: #5a6966;
+  font-weight: 600;
+  transition: color 0.25s ease;
+}
+
+.svc-card-link {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #0d1517;
+  transition: color 0.25s ease;
+}
+
+/* 5-Stage Protocol Cards on Services Page (Image 2) — Lime Background with Black Content */
+.protocol-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.protocol-card {
+  background: #c8f25d;
+  border-radius: 16px;
+  padding: 22px 18px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  position: relative;
+  overflow: hidden;
+  color: #0d1517;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.protocol-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.protocol-card .stage-num {
+  font-size: 34px;
+  font-weight: 900;
+  color: #0d1517;
+  opacity: 0.35;
+  letter-spacing: -2px;
+  margin-bottom: 10px;
+  line-height: 1;
+}
+
+.protocol-card .stage-title {
+  font-size: 15px;
+  margin: 0 0 8px;
+  color: #0d1517;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+
+.protocol-card .stage-body {
+  font-size: 12.5px;
+  color: #1a1a1a;
+  line-height: 1.65;
+  margin: 0;
+  font-weight: 500;
+}
+
+.au-conditions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.au-condition-card {
+  padding: 26px 22px;
+  background: #fff;
+  border: 1px solid #e3eae0;
+  border-radius: 18px;
+}
+
+.au-condition-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 13px;
+  background: #102021;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c8f25d;
+  margin-bottom: 16px;
+}
+
+/* ════════════════════════════════════════════════════════════
+   ABOUT PAGE — Dark stats strip
+   ════════════════════════════════════════════════════════════ */
+.about-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  background: #102021;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 20px;
+  overflow: hidden;
+  margin: 36px 0 72px;
+}
+
+.about-stat-tile {
+  padding: 28px 22px;
+  text-align: center;
+}
+
+.about-stat-value {
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: -1.5px;
+  color: #c8f25d;
+  line-height: 1;
+}
+
+.about-stat-label {
+  font-size: 12px;
+  color: #6a8a86;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+/* ════════════════════════════════════════════════════════════
+   SERVICE DETAIL PAGE — Process Cards & Layout (Image 1)
+   ════════════════════════════════════════════════════════════ */
+.svc-detail-layout {
+  display: grid;
+  grid-template-columns: 1.35fr 0.65fr;
+  gap: 28px;
+  margin-top: 44px;
+}
+
+.svc-process-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+/* Process Cards on Service Detail Pages (Image 1) — Lime Background with Black Content */
+.svc-process-card {
+  padding: 22px 18px;
+  background: #c8f25d;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+  position: relative;
+  overflow: hidden;
+  color: #0d1517;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.svc-process-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.svc-process-card .process-num {
+  font-size: 30px;
+  font-weight: 900;
+  color: #0d1517;
+  opacity: 0.35;
+  letter-spacing: -1px;
+  margin-bottom: 10px;
+  line-height: 1;
+}
+
+.svc-process-card .process-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  letter-spacing: -0.3px;
+  color: #0d1517;
+  font-weight: 800;
+}
+
+.svc-process-card .process-detail {
+  font-size: 13px;
+  color: #1a1a1a;
+  line-height: 1.65;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* ════════════════════════════════════════════════════════════
+   HOMEPAGE — Small screen hero padding
+   ════════════════════════════════════════════════════════════ */
+@media (max-width: 600px) {
+  .wrap.hero {
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   RESPONSIVE — TABLET (≤ 1024px)
+   ════════════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .services-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .au-conditions-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .about-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    border-radius: 16px;
+  }
+  .about-stat-tile {
+    border-right: none !important;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .svc-detail-layout {
+    grid-template-columns: 1fr;
+  }
+  .reviews-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   RESPONSIVE — MOBILE (≤ 767px)
+   ════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  .services-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 36px 0 44px;
+  }
+  .au-conditions-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .about-stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .reviews-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .reviews-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin: 24px 0 24px;
+  }
+  .reviews-filter-wrap {
+    gap: 6px;
+    margin-bottom: 22px;
+  }
+  .reviews-filter-btn {
+    padding: 7px 14px;
+    font-size: 12px;
+  }
+  .protocol-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .svc-process-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .svc-detail-layout {
+    gap: 18px;
+    margin-top: 28px;
+  }
+  /* about section 1 layout */
+  .about-story-grid {
+    grid-template-columns: 1fr !important;
+  }
+  /* about section 2 tools grid */
+  .about-tools-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .review-avatar {
+    width: 38px;
+    height: 38px;
+    font-size: 13px;
+  }
+  .review-tag-vehicle {
+    display: none;
+  }
+  .svc-card-title {
+    font-size: 18px;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   RESPONSIVE — VERY SMALL (≤ 480px)
+   ════════════════════════════════════════════════════════════ */
+@media (max-width: 480px) {
+  .about-stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .reviews-stats-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .reviews-stat-value {
+    font-size: 20px;
+  }
+  .svc-card-price {
+    font-size: 15px;
+  }
+  .services-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* PRINT MEDIA RULES (Australian Tax Invoices & Receipts) */
+
 @media print {
-  @page {
-    size: A4 portrait;
-    margin: 10mm auto;
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
   }
 
-  /* Hide the entire background web application */
+  @page {
+    size: auto;
+    margin: 8mm auto;
+  }
+
+  /* Completely reset body and remove web elements from flow */
   html, body {
     background: #ffffff !important;
-    color: #000000 !important;
+    color: #0d1517 !important;
     margin: 0 !important;
     padding: 0 !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
   }
 
-  body * {
-    visibility: hidden;
+  /* Hide entire application tree outside the receipt modal portal */
+  body > *:not(.receipt-modal-backdrop) {
+    display: none !important;
+    visibility: hidden !important;
   }
 
-  /* Isolate and display ONLY the receipt container and its descendants */
-  .receipt-modal-backdrop,
-  .receipt-modal-backdrop * {
-    visibility: visible;
-  }
-
+  /* Isolate and display ONLY the receipt container at the very top of page 1 */
   .receipt-modal-backdrop {
-    position: relative !important;
-    left: 0 !important;
-    top: 0 !important;
+    display: block !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
     width: 100% !important;
     background: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     padding: 0 !important;
-    margin: 0 !important;
-    display: flex !important;
-    justify-content: center !important;
-    align-items: flex-start !important;
-    z-index: 99999 !important;
+    margin: 0 auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    z-index: auto !important;
+    visibility: visible !important;
   }
 
-  /* Authentic Receipt Docket Dimensions */
+  .receipt-modal-backdrop * {
+    visibility: visible;
+  }
+
+  /* Authentic Tax Receipt Sizing: EXACTLY matches the preview card dimensions and styling */
   #tax-receipt-printable {
     visibility: visible !important;
-    position: relative !important;
+    display: block !important;
+    position: static !important;
     left: auto !important;
     top: auto !important;
-    width: 380px !important;
-    max-width: 380px !important;
-    min-width: 380px !important;
-    margin: 0 auto !important;
-    padding: 22px 18px !important;
+    width: 420px !important;
+    max-width: 420px !important;
+    min-width: 420px !important;
+    margin: 10px auto 0 !important;
+    padding: 24px 20px !important;
     box-shadow: none !important;
-    border: 1px dashed #99a8a5 !important;
-    border-radius: 6px !important;
+    border: 1px solid #dce2dc !important;
+    border-radius: 14px !important;
     background: #ffffff !important;
     color: #0d1517 !important;
     overflow: visible !important;
     max-height: none !important;
     box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   #tax-receipt-printable * {
     visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .no-print,

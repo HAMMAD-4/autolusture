@@ -32,17 +32,17 @@ type Form = {
   postcode: string;
 };
 
-export function BookingForm() {
+export function BookingForm({ defaultServiceSlug }: { defaultServiceSlug?: string } = {}) {
   return (
     <Suspense fallback={<div style={{ padding: 40, textAlign: 'center' }}>Loading booking engine…</div>}>
-      <BookingFormContent />
+      <BookingFormContent defaultServiceSlug={defaultServiceSlug} />
     </Suspense>
   );
 }
 
-function BookingFormContent() {
+function BookingFormContent({ defaultServiceSlug }: { defaultServiceSlug?: string }) {
   const searchParams = useSearchParams();
-  const initialService = searchParams.get('service') || 'signature-detail';
+  const initialService = searchParams.get('service') || defaultServiceSlug || 'signature-detail';
 
   const [step, setStep] = useState(0);
   const [done, setDone] = useState(false);

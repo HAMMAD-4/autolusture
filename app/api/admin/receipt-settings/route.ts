@@ -19,7 +19,8 @@ export async function GET() {
   try {
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT id, business_name, abn, business_address, phone, email, invoice_title,
-              terms_conditions, signature_image_data, signatory_name, signatory_title, updated_at
+              terms_conditions, signature_image_data, signatory_name, signatory_title,
+              tax_mode, tax_type, tax_rate, tax_label, updated_at
        FROM receipt_settings WHERE id = 1 LIMIT 1`
     );
 
@@ -119,11 +120,45 @@ export async function PATCH(req: Request) {
       cleanSignature = signature_image_data;
     }
 
+    let cleanTaxMode = 'inclusive';
+    if (body.tax_mode !== undefined && body.tax_mode !== null) {
+      if (!['inclusive', 'exclusive'].includes(body.tax_mode)) {
+        return NextResponse.json({ error: 'Invalid tax mode. Allowed values: inclusive, exclusive.' }, { status: 400 });
+      }
+      cleanTaxMode = body.tax_mode;
+    }
+
+    let cleanTaxType = 'percentage';
+    if (body.tax_type !== undefined && body.tax_type !== null) {
+      if (!['percentage', 'fixed'].includes(body.tax_type)) {
+        return NextResponse.json({ error: 'Invalid tax type. Allowed values: percentage, fixed.' }, { status: 400 });
+      }
+      cleanTaxType = body.tax_type;
+    }
+
+    let cleanTaxRate = 10.00;
+    if (body.tax_rate !== undefined && body.tax_rate !== null && body.tax_rate !== '') {
+      const num = Number(body.tax_rate);
+      if (isNaN(num) || num < 0) {
+        return NextResponse.json({ error: 'Tax rate must be a non-negative number.' }, { status: 400 });
+      }
+      cleanTaxRate = num;
+    }
+
+    let cleanTaxLabel = 'GST';
+    if (body.tax_label !== undefined && body.tax_label !== null) {
+      if (typeof body.tax_label !== 'string' || !body.tax_label.trim()) {
+        return NextResponse.json({ error: 'Tax label cannot be empty.' }, { status: 400 });
+      }
+      cleanTaxLabel = body.tax_label.trim().slice(0, 40);
+    }
+
     await db.query(
       `INSERT INTO receipt_settings (
         id, business_name, abn, business_address, phone, email, invoice_title,
-        terms_conditions, signature_image_data, signatory_name, signatory_title
-      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        terms_conditions, signature_image_data, signatory_name, signatory_title,
+        tax_mode, tax_type, tax_rate, tax_label
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         business_name = VALUES(business_name),
         abn = VALUES(abn),
@@ -134,7 +169,11 @@ export async function PATCH(req: Request) {
         terms_conditions = VALUES(terms_conditions),
         signature_image_data = VALUES(signature_image_data),
         signatory_name = VALUES(signatory_name),
-        signatory_title = VALUES(signatory_title)`,
+        signatory_title = VALUES(signatory_title),
+        tax_mode = VALUES(tax_mode),
+        tax_type = VALUES(tax_type),
+        tax_rate = VALUES(tax_rate),
+        tax_label = VALUES(tax_label)`,
       [
         business_name.trim().slice(0, 160),
         abn.trim().slice(0, 40),
@@ -145,7 +184,11 @@ export async function PATCH(req: Request) {
         terms_conditions ? String(terms_conditions).trim() : null,
         cleanSignature,
         signatory_name ? String(signatory_name).trim().slice(0, 120) : 'Authorized Management',
-        signatory_title ? String(signatory_title).trim().slice(0, 120) : 'Quality Assurance & Studio Director'
+        signatory_title ? String(signatory_title).trim().slice(0, 120) : 'Quality Assurance & Studio Director',
+        cleanTaxMode,
+        cleanTaxType,
+        cleanTaxRate,
+        cleanTaxLabel
       ]
     );
 
