@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { currentUser } from '@/lib/auth/local';
 import { db } from '@/lib/db/client';
+import { ulid } from 'ulid';
 import type { RowDataPacket } from 'mysql2';
 
 export async function GET(request: Request) {
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
     const [allRows] = await db.query<RowDataPacket[]>(
       `SELECT b.id, b.reference_code, b.booking_type, b.scheduled_at, b.status,
               b.service_notes, b.bill_amount, b.payment_method, b.completed_at, b.created_at,
-              b.assigned_rep_id,
+              b.started_at, b.assigned_rep_id,
               c.full_name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
               c.suburb AS customer_suburb, c.state AS customer_state,
               v.rego, v.state AS vehicle_state, v.make, v.model,
@@ -55,6 +56,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       repId: user.id,
       repName: user.full_name,
+      repEmail: user.email,
       activeBooking: active || null,
       openBookings: openForRep,
       completedBookings: doneByRep,
@@ -74,19 +76,20 @@ export async function GET(request: Request) {
 // Claim / assign / start a booking for this rep
 export async function POST(request: Request) {
   const user = await currentUser();
-  if (!user || user.role !== 'rep') {
-    return NextResponse.json({ error: 'Unauthorised. Rep role required.' }, { status: 401 });
+  if (!user || (user.role !== 'rep' && user.role !== 'admin')) {
+    return NextResponse.json({ error: 'Unauthorised. Staff access required.' }, { status: 401 });
   }
 
   try {
-    const { bookingId, action = 'claim' } = await request.json();
+    const body = await request.json();
+    const { bookingId, action = 'claim', beforePhotos = [] } = body;
     if (!bookingId) {
       return NextResponse.json({ error: 'Booking ID is required.' }, { status: 400 });
     }
 
     // Verify booking
     const [rows] = await db.query<RowDataPacket[]>(
-      'SELECT id, assigned_rep_id, status FROM bookings WHERE id = ? LIMIT 1',
+      'SELECT id, assigned_rep_id, status, started_at FROM bookings WHERE id = ? LIMIT 1',
       [bookingId]
     );
 
@@ -96,13 +99,71 @@ export async function POST(request: Request) {
 
     const booking = rows[0];
 
-    if (action === 'start') {
-      // Start active detailing timer
-      await db.execute(
-        'UPDATE bookings SET assigned_rep_id = ?, status = "in_progress", updated_at = CURRENT_TIMESTAMP(3) WHERE id = ?',
-        [user.id, bookingId]
+    // Concurrency Lock: If already assigned to another rep, prevent start or tampering (unless admin)
+    if (booking.assigned_rep_id && booking.assigned_rep_id !== user.id && user.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'This booking is in progress or claimed by another representative. It is locked.' },
+        { status: 403 }
       );
-      return NextResponse.json({ ok: true, message: 'Detailing service stopwatch started!' });
+    }
+
+    if (action === 'start') {
+      // Strict rule: Timer must start ONLY after before photos are added
+      const [existingBeforePhotos] = await db.query<RowDataPacket[]>(
+        'SELECT id FROM service_photos WHERE booking_id = ? AND photo_type = "before" LIMIT 1',
+        [bookingId]
+      );
+      const hasPayloadBeforePhotos =
+        Array.isArray(body.beforePhotos) &&
+        body.beforePhotos.some((p: unknown) => {
+          const url = typeof p === 'string' ? p : (p as { dataUrl?: string })?.dataUrl || '';
+          return Boolean(url && url.startsWith('data:image/'));
+        });
+
+      if (existingBeforePhotos.length === 0 && !hasPayloadBeforePhotos) {
+        return NextResponse.json(
+          { error: 'Before photos are required before the job and timer can be started.' },
+          { status: 400 }
+        );
+      }
+
+      // Start active detailing timer and persist started_at timestamp in database
+      const assignedRep = booking.assigned_rep_id || user.id;
+      await db.execute(
+        'UPDATE bookings SET assigned_rep_id = ?, status = "in_progress", started_at = COALESCE(started_at, CURRENT_TIMESTAMP(3)), updated_at = CURRENT_TIMESTAMP(3) WHERE id = ?',
+        [assignedRep, bookingId]
+      );
+
+      // Fetch the exact started_at from DB
+      const [updatedRows] = await db.query<RowDataPacket[]>(
+        'SELECT started_at FROM bookings WHERE id = ?',
+        [bookingId]
+      );
+      const rawStartedAt = updatedRows[0]?.started_at;
+      const dbStartedAt = rawStartedAt ? new Date(rawStartedAt).toISOString() : new Date().toISOString();
+
+      // Save before photos if provided with start request
+      if (Array.isArray(body.beforePhotos) && body.beforePhotos.length > 0) {
+        for (const p of body.beforePhotos) {
+          const dataUrl = typeof p === 'string' ? p : p?.dataUrl || '';
+          if (dataUrl && dataUrl.startsWith('data:image/')) {
+            try {
+              await db.query(
+                'INSERT INTO service_photos (id, booking_id, photo_type, image_data, title) VALUES (?, ?, "before", ?, "Before Inspection")',
+                [ulid(), bookingId, dataUrl]
+              );
+            } catch (err) {
+              console.warn('Could not save before photo on start:', err);
+            }
+          }
+        }
+      }
+
+      return NextResponse.json({
+        ok: true,
+        started_at: dbStartedAt,
+        message: 'Detailing service stopwatch started!'
+      });
     }
 
     if (action === 'unclaim') {
@@ -114,10 +175,6 @@ export async function POST(request: Request) {
     }
 
     // Default action: 'claim'
-    if (booking.assigned_rep_id && booking.assigned_rep_id !== user.id) {
-      return NextResponse.json({ error: 'This booking has already been claimed by another representative.' }, { status: 409 });
-    }
-
     // Assign to this rep without starting detailing yet
     await db.execute(
       'UPDATE bookings SET assigned_rep_id = ?, updated_at = CURRENT_TIMESTAMP(3) WHERE id = ?',

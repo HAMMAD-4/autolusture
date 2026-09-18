@@ -26,6 +26,7 @@ export default function RepDashboard() {
   const router = useRouter();
   const [data, setData] = useState<{
     repName: string;
+    repEmail?: string;
     activeBooking: RepBooking | null;
     openBookings: RepBooking[];
     completedBookings: RepBooking[];
@@ -83,7 +84,13 @@ export default function RepDashboard() {
       <header className="portal-title">
         <div>
           <div className="eyebrow">{todayDateStr}</div>
-          <h1>Good day, {data?.repName || 'Kai'}.</h1>
+          <h1>Good day, {data?.repName || 'Representative'}.</h1>
+          {data?.repEmail && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#e8ede7', padding: '3px 10px', borderRadius: 6, fontSize: 12, margin: '4px 0 8px' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2e7d32' }} />
+              <span>Signed in: <b>{data.repName}</b> ({data.repEmail})</span>
+            </div>
+          )}
           <p>
             {data?.activeBooking
               ? 'You have 1 active detail currently underway.'

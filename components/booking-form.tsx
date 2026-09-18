@@ -57,6 +57,8 @@ function BookingFormContent({ defaultServiceSlug }: { defaultServiceSlug?: strin
 
   const todayStr = new Date().toISOString().split('T')[0];
 
+  const [availableServices, setAvailableServices] = useState(services);
+
   const [form, setForm] = useState<Form>({
     rego: '',
     vehicleState: 'NSW',
@@ -74,13 +76,44 @@ function BookingFormContent({ defaultServiceSlug }: { defaultServiceSlug?: strin
     postcode: ''
   });
 
+  // Query live services to filter out any inactive services
+  useEffect(() => {
+    fetch('/api/services')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.services && Array.isArray(data.services)) {
+          const activeList = data.services
+            .filter((s: { isActive?: boolean }) => s.isActive !== false)
+            .map((s: { slug: string; name: string; price: number; durationMinutes?: number; category: string; description: string }) => ({
+              slug: s.slug,
+              name: s.name,
+              price: s.price,
+              duration: s.durationMinutes ? `${Math.round(s.durationMinutes / 60)} hours` : '2 hours',
+              category: s.category || 'General',
+              description: s.description || ''
+            }));
+          if (activeList.length > 0) {
+            setAvailableServices(activeList);
+            // If current selected service is inactive, select the first active service
+            setForm((prev) => {
+              if (!activeList.some((x: { slug: string }) => x.slug === prev.service)) {
+                return { ...prev, service: activeList[0].slug };
+              }
+              return prev;
+            });
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Sync initial service from query param if changed
   useEffect(() => {
     const s = searchParams.get('service');
-    if (s && services.some((x) => x.slug === s)) {
+    if (s && availableServices.some((x) => x.slug === s)) {
       setForm((prev) => ({ ...prev, service: s }));
     }
-  }, [searchParams]);
+  }, [searchParams, availableServices]);
 
   const change = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -210,7 +243,7 @@ function BookingFormContent({ defaultServiceSlug }: { defaultServiceSlug?: strin
     );
   }
 
-  const selectedService = services.find((s) => s.slug === form.service);
+  const selectedService = availableServices.find((s) => s.slug === form.service) || services.find((s) => s.slug === form.service);
 
   return (
     <>
@@ -246,7 +279,7 @@ function BookingFormContent({ defaultServiceSlug }: { defaultServiceSlug?: strin
         {/* Step 1: Service */}
         {step === 1 && (
           <div className="fields">
-            {services.map((s) => (
+            {availableServices.map((s) => (
               <label
                 className="field full"
                 key={s.slug}

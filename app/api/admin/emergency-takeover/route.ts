@@ -4,10 +4,12 @@ import { db } from '@/lib/db/client';
 import { ulid } from 'ulid';
 import type { RowDataPacket } from 'mysql2';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   const user = await currentUser();
-  if (!user || (user.role !== 'rep' && user.role !== 'admin')) {
-    return NextResponse.json({ error: 'Unauthorised. Representative or Administrator login required.' }, { status: 401 });
+  if (!user || user.role !== 'admin') {
+    return NextResponse.json({ error: 'Unauthorised. Administrator login required.' }, { status: 401 });
   }
 
   try {
@@ -15,8 +17,8 @@ export async function POST(request: Request) {
     const {
       bookingId,
       billAmount,
-      paymentMethod,
-      serviceNotes,
+      paymentMethod = 'card',
+      serviceNotes = 'Completed via studio administrator emergency takeover.',
       beforePhotos = [],
       afterPhotos = []
     } = body;
@@ -30,14 +32,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'A valid bill amount greater than $0.00 is required.' }, { status: 400 });
     }
 
-    if (!paymentMethod || !paymentMethod.trim()) {
-      return NextResponse.json({ error: 'Please select a payment method.' }, { status: 400 });
+    // 1. Fetch current booking and rep info
+    const [bookingRows] = await db.query<RowDataPacket[]>(
+      `SELECT b.id, b.reference_code, b.scheduled_at, b.assigned_rep_id,
+              c.full_name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+              c.suburb AS customer_suburb, c.state AS customer_state, c.postcode AS customer_postcode,
+              v.rego, v.state AS vehicle_state, v.make, v.model,
+              s.name AS service_name, s.base_price,
+              u.full_name AS rep_name, u.email AS rep_email
+       FROM bookings b
+       JOIN customers c ON c.id = b.customer_id
+       JOIN vehicles v ON v.id = b.vehicle_id
+       JOIN services s ON s.id = b.service_id
+       LEFT JOIN users u ON u.id = b.assigned_rep_id
+       WHERE b.id = ? LIMIT 1`,
+      [bookingId]
+    );
+
+    if (bookingRows.length === 0) {
+      return NextResponse.json({ error: 'Booking not found.' }, { status: 404 });
     }
 
-    if (!serviceNotes || !serviceNotes.trim()) {
-      return NextResponse.json({ error: 'Service notes are required to document the completed work.' }, { status: 400 });
-    }
+    const b = bookingRows[0];
 
+    // 2. Strict requirement: Admin can only process the active job by adding After photos!
     const [existingAfter] = await db.query<RowDataPacket[]>(
       'SELECT id FROM service_photos WHERE booking_id = ? AND photo_type = "after" LIMIT 1',
       [bookingId]
@@ -51,42 +69,12 @@ export async function POST(request: Request) {
 
     if (existingAfter.length === 0 && !hasPayloadAfter) {
       return NextResponse.json(
-        { error: 'At least one after photo is required before ending the job.' },
+        { error: 'At least one after photo is required to end the job and complete the takeover.' },
         { status: 400 }
       );
     }
 
-    // 1. Fetch booking, customer and vehicle details
-    const [bookingRows] = await db.query<RowDataPacket[]>(
-      `SELECT b.id, b.reference_code, b.scheduled_at, b.assigned_rep_id,
-              c.full_name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
-              c.suburb AS customer_suburb, c.state AS customer_state, c.postcode AS customer_postcode,
-              v.rego, v.state AS vehicle_state, v.make, v.model,
-              s.name AS service_name, s.base_price
-       FROM bookings b
-       JOIN customers c ON c.id = b.customer_id
-       JOIN vehicles v ON v.id = b.vehicle_id
-       JOIN services s ON s.id = b.service_id
-       WHERE b.id = ? LIMIT 1`,
-      [bookingId]
-    );
-
-    if (bookingRows.length === 0) {
-      return NextResponse.json({ error: 'Booking not found.' }, { status: 404 });
-    }
-
-    const b = bookingRows[0];
-
-    // Concurrency Lock: only assigned rep or admin can complete job
-    if (b.assigned_rep_id && b.assigned_rep_id !== user.id && user.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'This booking is currently in progress by another representative and is locked.' },
-        { status: 403 }
-      );
-    }
-
-    // 2. Update booking in DB: set status='completed', bill_amount, payment_method, service_notes, completed_at, assigned_rep_id
-    const finalRepId = b.assigned_rep_id || user.id;
+    // 3. Complete the booking while PRESERVING b.assigned_rep_id so rep receives full credit in account
     await db.execute(
       `UPDATE bookings
        SET status = 'completed',
@@ -94,89 +82,58 @@ export async function POST(request: Request) {
            payment_method = ?,
            service_notes = ?,
            completed_at = CURRENT_TIMESTAMP(3),
-           assigned_rep_id = ?,
            updated_at = CURRENT_TIMESTAMP(3)
        WHERE id = ?`,
-      [bill, paymentMethod.trim(), serviceNotes.trim(), finalRepId, bookingId]
+      [bill, paymentMethod.trim(), serviceNotes.trim(), bookingId]
     );
 
-    // 3. Save Before and After photos into service_photos table
-    const MAX_PHOTOS = 20;
-    const MAX_PHOTO_BYTES = 3 * 1024 * 1024; // 3 MB limit per photo (base64 string length)
-    const ALLOWED_MIME_PREFIXES = [
-      'data:image/jpeg;base64,',
-      'data:image/png;base64,',
-      'data:image/webp;base64,'
-    ];
-
-    const allPhotosToSave = [
-      ...beforePhotos.map((p: { dataUrl?: string; id?: string }) => ({
-        type: 'before' as const,
-        data: typeof p === 'string' ? p : p.dataUrl || ''
-      })),
-      ...afterPhotos.map((p: { dataUrl?: string; id?: string }) => ({
+    // 4. Insert ONLY After photos into service_photos table (Admin can never add before photos)
+    const afterPhotosToSave = (Array.isArray(afterPhotos) ? afterPhotos : [])
+      .map((p: { dataUrl?: string } | string) => ({
         type: 'after' as const,
-        data: typeof p === 'string' ? p : p.dataUrl || ''
+        data: typeof p === 'string' ? p : p?.dataUrl || ''
       }))
-    ].filter((p) => p.data && p.data.length > 0);
-
-    if (allPhotosToSave.length > MAX_PHOTOS) {
-      return NextResponse.json(
-        { error: `Maximum ${MAX_PHOTOS} photos allowed.` },
-        { status: 400 }
-      );
-    }
+      .filter((p) => p.data && p.data.startsWith('data:image/'));
 
     let savedPhotoCount = 0;
-    for (const photo of allPhotosToSave) {
-      // Validate MIME type via data URL prefix (magic-byte equivalent for base64)
-      const isAllowedMime = ALLOWED_MIME_PREFIXES.some((prefix) => photo.data.startsWith(prefix));
-      if (!isAllowedMime) {
-        console.warn('Skipping photo with disallowed MIME type prefix.');
-        continue;
-      }
-      // Enforce per-photo size cap
-      if (photo.data.length > MAX_PHOTO_BYTES) {
-        console.warn(`Skipping photo exceeding size limit (${photo.data.length} bytes).`);
-        continue;
-      }
+    for (const photo of afterPhotosToSave) {
       try {
         await db.query(
           `INSERT INTO service_photos (id, booking_id, photo_type, image_data, title)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES (?, ?, 'after', ?, ?)`,
           [
             ulid(),
             bookingId,
-            photo.type,
             photo.data,
-            `${photo.type === 'before' ? 'Before Inspection' : 'After Finish'} - ${b.make} ${b.model}`
+            `Takeover After Finish - ${b.make} ${b.model}`
           ]
         );
         savedPhotoCount++;
       } catch (photoErr) {
-        console.warn('Warning: Could not save individual photo into service_photos:', photoErr);
+        console.warn('Warning: Could not save individual takeover after photo:', photoErr);
       }
     }
 
-    // 4. Log completion event
+    // 4. Log takeover completion in service_logs, confirming rep credit retention
     await db.query(
       `INSERT INTO service_logs (id, booking_id, event_name, metadata)
-       VALUES (?, ?, 'completed', ?)`,
+       VALUES (?, ?, 'admin_emergency_takeover_completed', ?)`,
       [
         ulid(),
         bookingId,
         JSON.stringify({
-          repId: user.id,
-          repName: user.full_name,
+          adminId: user.id,
+          adminName: user.full_name,
+          creditedRepId: b.assigned_rep_id,
+          creditedRepName: b.rep_name || 'Unassigned',
           billAmount: bill,
           paymentMethod,
-          photoCount: savedPhotoCount
+          savedPhotoCount
         })
       ]
     );
 
-    // 5. Generate Australian Standard Tax Receipt
-    // In Australia, GST is 10% (1/11th of total inc. GST price)
+    // 5. Generate Tax Receipt
     const totalPaid = bill;
     const gstComponent = Number((totalPaid / 11).toFixed(2));
     const subtotalExGst = Number((totalPaid - gstComponent).toFixed(2));
@@ -224,19 +181,19 @@ export async function POST(request: Request) {
         rawTotal: totalPaid
       },
       representative: {
-        name: user.full_name,
-        id: user.id
+        name: b.rep_name ? `${b.rep_name} (Credited Technician)` : 'AutoLustre Studio Tech',
+        id: b.assigned_rep_id || user.id
       }
     };
 
     return NextResponse.json({
       ok: true,
-      message: 'Job completed successfully and recorded against your profile!',
+      message: `Emergency takeover completed successfully! Full performance and revenue credit was awarded to ${b.rep_name || 'the representative'}.`,
       receipt: taxReceipt,
-      cashInflowAdded: totalPaid
+      creditedRepName: b.rep_name || null
     });
   } catch (error) {
-    console.error('Failed to complete job:', error);
-    return NextResponse.json({ error: 'Failed to record job completion.' }, { status: 500 });
+    console.error('Failed to execute admin emergency takeover:', error);
+    return NextResponse.json({ error: 'Failed to record takeover completion.' }, { status: 500 });
   }
 }

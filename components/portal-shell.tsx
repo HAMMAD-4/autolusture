@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LogoutButton } from './logout-button';
@@ -26,6 +27,13 @@ const repNav = [
   ['/portal/rep/performance', 'Performance']
 ];
 
+interface CurrentUserData {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+}
+
 export function PortalShell({
   role,
   children
@@ -35,7 +43,28 @@ export function PortalShell({
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<CurrentUserData | null>(null);
   const items = role === 'admin' ? adminNav : repNav;
+
+  // Fetch live signed-in user details from DB
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(`autolustre_user_${role}`);
+      if (cached) setCurrentUser(JSON.parse(cached));
+    } catch {}
+
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.user) {
+          setCurrentUser(data.user);
+          try {
+            localStorage.setItem(`autolustre_user_${role}`, JSON.stringify(data.user));
+          } catch {}
+        }
+      })
+      .catch(() => {});
+  }, [role]);
 
   // Prevent background scroll when mobile menu is open
   useEffect(() => {
@@ -63,10 +92,17 @@ export function PortalShell({
     <div className="portal">
       {/* Desktop & Tablet Sidebar */}
       <aside className="side">
-        <Link className="brand" href="/">
-          auto<i>lustre</i>
+        <Link className="brand" href="/" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none', margin: '0 10px 24px' }}>
+          <Image
+            src="/logo.png"
+            alt="AutoLustre"
+            width={58}
+            height={58}
+            priority
+            style={{ objectFit: 'contain', display: 'block', width: 'auto', height: 48 }}
+          />
         </Link>
-        <div style={{ margin: '0 10px 24px' }}>
+        <div style={{ margin: '0 10px 14px' }}>
           <span
             className="eyebrow"
             style={{
@@ -79,6 +115,65 @@ export function PortalShell({
           >
             {role === 'admin' ? '🛡 Admin Portal' : '🔧 Field Rep Portal'}
           </span>
+        </div>
+
+        {/* Live Signed-in User Identity Card from DB */}
+        <div
+          style={{
+            margin: '0 8px 18px',
+            padding: '10px 12px',
+            background: 'rgba(255, 255, 255, 0.06)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10
+          }}
+        >
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              background: role === 'admin' ? '#1d6960' : '#243c3d',
+              border: '1.5px solid #c8f25d',
+              color: '#fff',
+              display: 'grid',
+              placeContent: 'center',
+              fontSize: 14,
+              fontWeight: 800,
+              flexShrink: 0
+            }}
+          >
+            {(currentUser?.full_name || (role === 'admin' ? 'A' : 'R'))[0]?.toUpperCase()}
+          </div>
+          <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 800,
+                color: '#ffffff',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}
+              title={currentUser?.full_name}
+            >
+              {currentUser?.full_name || 'Loading profile…'}
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: '#a0b4af',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}
+              title={currentUser?.email}
+            >
+              {currentUser?.email || (role === 'admin' ? 'Administrator' : 'Field Representative')}
+            </div>
+          </div>
         </div>
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -105,8 +200,15 @@ export function PortalShell({
         {/* Mobile Navigation Header (Only on mobile screens) */}
         <header className="portal-mobile-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Link className="brand" href="/">
-              auto<i>lustre</i>
+            <Link className="brand" href="/" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
+              <Image
+                src="/logo.png"
+                alt="AutoLustre"
+                width={36}
+                height={36}
+                priority
+                style={{ objectFit: 'contain', display: 'block', width: 'auto', height: 32 }}
+              />
             </Link>
             <span
               className="eyebrow"
@@ -138,11 +240,16 @@ export function PortalShell({
             <div className="portal-mobile-backdrop" onClick={() => setMenuOpen(false)} />
             <div className="portal-mobile-drawer">
               <div className="portal-mobile-drawer-head">
-                <div>
-                  <div className="brand" style={{ color: '#fff', fontSize: 18 }}>
-                    auto<i>lustre</i>
-                  </div>
-                  <div style={{ fontSize: 11, color: '#8b9d98', marginTop: 2 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <Image
+                    src="/logo.png"
+                    alt="AutoLustre"
+                    width={44}
+                    height={44}
+                    priority
+                    style={{ objectFit: 'contain', display: 'block', width: 'auto', height: 38 }}
+                  />
+                  <div style={{ fontSize: 12, color: '#8b9d98', fontWeight: 600 }}>
                     {role === 'admin' ? '🛡 Studio Administrator' : '🔧 Field Detailing Representative'}
                   </div>
                 </div>
@@ -158,13 +265,13 @@ export function PortalShell({
 
               <div className="portal-mobile-user-card">
                 <div style={{ fontSize: 10, color: '#889995', textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: 700 }}>
-                  Logged In Technician
+                  Signed In {role === 'admin' ? 'Administrator' : 'Field Technician'}
                 </div>
                 <div style={{ fontWeight: 800, fontSize: 15, color: '#fff', marginTop: 3 }}>
-                  {role === 'admin' ? 'Amelia Ross (Administrator)' : 'Kai Evans (Field Representative)'}
+                  {currentUser ? currentUser.full_name : 'Loading profile…'}
                 </div>
-                <div style={{ fontSize: 12, color: '#c8f25d', marginTop: 4, fontWeight: 600 }}>
-                  ● Active on Duty · Sydney Mobile Bay
+                <div style={{ fontSize: 12, color: '#dce8e4', marginTop: 2 }}>
+                  {currentUser?.email || (role === 'admin' ? 'Administrator' : 'Representative')}
                 </div>
               </div>
 
@@ -223,7 +330,14 @@ export function PortalShell({
         {/* Desktop Top Header Bar (Hidden on Mobile) */}
         <div className="portal-desktop-topbar">
           <div>
-            Logged in as <b>{role === 'admin' ? 'Amelia Ross (Administrator)' : 'Kai Evans (Field Representative)'}</b>
+            Logged in as{' '}
+            <b>
+              {currentUser?.full_name
+                ? `${currentUser.full_name} (${role === 'admin' ? 'Administrator' : 'Field Representative'})`
+                : role === 'admin'
+                ? 'Administrator'
+                : 'Field Representative'}
+            </b>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Link href="/" style={{ color: 'inherit', textDecoration: 'underline' }}>

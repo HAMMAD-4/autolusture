@@ -26,6 +26,14 @@ try {
   else console.error('Col err:', e.message);
 }
 
+try {
+  await c.query(`ALTER TABLE bookings ADD COLUMN started_at DATETIME(3) NULL`);
+  console.log('Added started_at column');
+} catch (e) {
+  if (e.code === 'ER_DUP_FIELDNAME') console.log('started_at already exists');
+  else console.error('Col err:', e.message);
+}
+
 // Ensure scheduled_at unique constraint doesn't block bookings on different dates or when null
 // If unique key on scheduled_at exists, let's keep it or ensure it allows bookings with 1 hour gap
 try {

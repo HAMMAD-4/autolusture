@@ -9,14 +9,52 @@ async function isAdmin() {
   return u?.role === 'admin';
 }
 
+import { services as canonicalServices } from '@/lib/data';
+
+function parseDurationToMins(duration: string): number {
+  if (duration.includes('day')) {
+    const days = parseFloat(duration) || 1;
+    return Math.round(days * 480);
+  }
+  const hours = parseFloat(duration) || 1;
+  return Math.round(hours * 60);
+}
+
 export async function GET() {
   if (!(await isAdmin())) {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
   }
   try {
-    const [rows] = await db.query<RowDataPacket[]>(
+    let [rows] = await db.query<RowDataPacket[]>(
       'SELECT id, slug, name, description_md, base_price, duration_minutes, category, is_active FROM services ORDER BY display_order, name ASC'
     );
+
+    // Self-healing: Ensure all canonical services from lib/data are present in DB
+    const existingSlugs = new Set(rows.map((r) => r.slug));
+    const missing = canonicalServices.filter((s) => !existingSlugs.has(s.slug));
+
+    if (missing.length > 0) {
+      for (const s of missing) {
+        const id = ulid();
+        await db.execute(
+          'INSERT INTO services (id, slug, name, description_md, base_price, duration_minutes, category, is_active, display_order) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 50)',
+          [
+            id,
+            s.slug,
+            s.name,
+            s.description,
+            Number(s.price),
+            parseDurationToMins(s.duration),
+            s.category
+          ]
+        );
+      }
+      // Re-fetch with newly added services
+      [rows] = await db.query<RowDataPacket[]>(
+        'SELECT id, slug, name, description_md, base_price, duration_minutes, category, is_active FROM services ORDER BY display_order, name ASC'
+      );
+    }
+
     return NextResponse.json(rows);
   } catch (error) {
     console.error('Failed to get services:', error);

@@ -12,7 +12,7 @@ export async function GET() {
   try {
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT b.id, b.reference_code, b.booking_type, b.scheduled_at, b.status,
-              b.service_notes, b.bill_amount, b.created_at, b.updated_at,
+              b.service_notes, b.bill_amount, b.created_at, b.updated_at, b.started_at,
               c.full_name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
               c.suburb AS customer_suburb, c.state AS customer_state,
               v.rego, v.state AS vehicle_state, v.make, v.model,

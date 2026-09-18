@@ -180,21 +180,48 @@ export default function AdminOverview() {
     ''
   );
 
-  const areaD = `${pathD} L ${points[points.length - 1].x} ${svgHeight - paddingY} L ${points[0].x} ${svgHeight - paddingY} Z`;
+  const areaD = `${pathD} L ${points[points.length - 1]?.x || 0} ${svgHeight - paddingY} L ${points[0]?.x || 0} ${svgHeight - paddingY} Z`;
 
-  const serviceBreakdown = [
-    { name: 'Ceramic Protection', pct: 44, color: '#ed795e', revenue: '$899/job' },
-    { name: 'Paint Correction', pct: 36, color: '#527472', revenue: '$549/job' },
-    { name: 'Signature Detail', pct: 15, color: '#c8f25d', revenue: '$249/job' },
-    { name: 'Interior Revival', pct: 5, color: '#cce6e1', revenue: '$189/job' }
-  ];
+  const [adminUser, setAdminUser] = useState<{ full_name: string; email: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.user) setAdminUser(d.user);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Dynamically compute service breakdown from actual completed bookings in DB
+  const serviceCountMap: Record<string, { count: number; revenue: number }> = {};
+  for (const b of completedJobs) {
+    const sName = b.service_name || 'Standard Detail';
+    if (!serviceCountMap[sName]) serviceCountMap[sName] = { count: 0, revenue: 0 };
+    serviceCountMap[sName].count++;
+    serviceCountMap[sName].revenue += Number(b.bill_amount || 0);
+  }
+
+  const colorPalette = ['#1d6960', '#c8f25d', '#ed795e', '#527472', '#be4635', '#cce6e1'];
+  const serviceBreakdown = Object.entries(serviceCountMap).map(([name, stat], idx) => ({
+    name,
+    pct: settledCashInflow > 0 ? Math.round((stat.revenue / settledCashInflow) * 100) : 0,
+    color: colorPalette[idx % colorPalette.length],
+    revenue: `$${stat.revenue.toFixed(2)} (${stat.count} job${stat.count === 1 ? '' : 's'})`
+  }));
 
   return (
     <PortalShell role="admin">
       <header className="portal-title">
         <div>
-          <div className="eyebrow">Executive Dashboard</div>
-          <h1>Studio Overview & Financials</h1>
+          <div className="eyebrow">Executive Dashboard · Live DB Telemetry</div>
+          <h1>{adminUser ? `Welcome, ${adminUser.full_name}.` : 'Studio Overview & Financials'}</h1>
+          {adminUser && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#e8ede7', padding: '3px 10px', borderRadius: 6, fontSize: 12, margin: '4px 0 8px' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2e7d32' }} />
+              <span>Signed in: <b>{adminUser.full_name}</b> ({adminUser.email})</span>
+            </div>
+          )}
           <p>Strict cash inflow tracking upon job completion, operating expenses, and financial telemetry.</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>

@@ -37,6 +37,12 @@ export async function POST(request: Request) {
         );
       }
     }
+    if (error instanceof Error && (error.message.includes('not available') || error.message.includes('inactive'))) {
+      return NextResponse.json(
+        { error: 'This service is currently inactive and cannot be booked.' },
+        { status: 400 }
+      );
+    }
     console.error('Booking submission failed:', error);
     return NextResponse.json({ error: 'Unable to save your booking. Please try again shortly.' }, { status: 500 });
   }

@@ -69,8 +69,8 @@ export default function BillCustomizePage() {
       rawTotal: 899
     },
     representative: {
-      name: 'Kai Evans',
-      id: 'REP-01'
+      name: form.signatory_name || 'Studio Representative',
+      id: 'REP-OFFICIAL'
     }
   };
 

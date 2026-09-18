@@ -301,9 +301,28 @@ export default function AdminServices() {
                     <td>
                       <b>${Number(s.base_price).toFixed(2)}</b>
                     </td>
-                    <td>{s.duration_minutes} mins</td>
                     <td>
-                      <span className={`status ${s.is_active ? 'live' : ''}`}>
+                      {Number(s.duration_minutes) >= 480
+                        ? `${Number(s.duration_minutes) % 480 === 0 ? `${Number(s.duration_minutes) / 480} day${Number(s.duration_minutes) / 480 > 1 ? 's' : ''}` : `${Math.round(Number(s.duration_minutes) / 60)} hrs`} (${s.duration_minutes}m)`
+                        : Number(s.duration_minutes) >= 60
+                        ? `${Number(s.duration_minutes) % 60 === 0 ? `${Number(s.duration_minutes) / 60}h` : `${(Number(s.duration_minutes) / 60).toFixed(1)}h`} (${s.duration_minutes}m)`
+                        : `${s.duration_minutes} mins`}
+                    </td>
+                    <td>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '4px 10px',
+                          borderRadius: 100,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          background: s.is_active ? '#e7f5ee' : '#fcebea',
+                          color: s.is_active ? '#1b7a4b' : '#be4635'
+                        }}
+                      >
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.is_active ? '#1b7a4b' : '#be4635' }} />
                         {s.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>

@@ -131,6 +131,11 @@ async function verifyAll() {
   const profileData = JSON.parse(profileGet.body);
   console.log(`14. Admin Profile GET: ${profileGet.status === 200 ? 'PASS' : 'FAIL'} (Admin name: ${profileData.profile?.full_name}, Email: ${profileData.profile?.email})`);
 
+  // 15. Admin Services API (GET all 9 services)
+  const servicesGet = await req('GET', '/api/admin/services', null, { Cookie: cookie });
+  const servicesData = JSON.parse(servicesGet.body);
+  console.log(`15. Admin Services API GET: ${servicesGet.status === 200 && servicesData.length >= 9 ? 'PASS' : 'FAIL'} (Found ${servicesData.length} services: ${servicesData.map(s => s.name).join(', ')})`);
+
   console.log('=== ALL VERIFICATIONS COMPLETE ===');
 }
 

@@ -23,6 +23,8 @@ interface CompletedJob {
   payment_method?: string;
   service_notes?: string;
   completed_at: string;
+  assigned_rep_id?: string;
+  rep_name?: string;
 }
 
 interface CustomerHistoryGroup {
@@ -36,6 +38,7 @@ interface CustomerHistoryGroup {
 
 export default function RepHistory() {
   const [completedJobs, setCompletedJobs] = useState<CompletedJob[]>([]);
+  const [currentRepName, setCurrentRepName] = useState('');
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'customers' | 'list'>('customers');
@@ -45,6 +48,7 @@ export default function RepHistory() {
     fetch('/api/rep/bookings')
       .then((r) => r.json())
       .then((data) => {
+        if (data.repName) setCurrentRepName(data.repName);
         setCompletedJobs(data.completedBookings || []);
       })
       .catch((err) => console.error('Failed to load rep history:', err))
@@ -88,8 +92,8 @@ export default function RepHistory() {
         totalAmount: `$${total.toFixed(2)} AUD`
       },
       representative: {
-        name: 'Kai Evans (Field Representative)',
-        id: job.id
+        name: `${job.rep_name || currentRepName || 'Field Representative'}`,
+        id: job.assigned_rep_id || job.id
       }
     };
 

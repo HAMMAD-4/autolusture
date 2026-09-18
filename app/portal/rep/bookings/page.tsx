@@ -26,6 +26,7 @@ interface RepBooking {
 export default function RepBookingsSchedule() {
   const router = useRouter();
   const [bookings, setBookings] = useState<RepBooking[]>([]);
+  const [currentRepId, setCurrentRepId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState('');
@@ -36,6 +37,7 @@ export default function RepBookingsSchedule() {
       const res = await fetch('/api/rep/bookings');
       if (!res.ok) throw new Error('Failed to load upcoming bookings');
       const data = await res.json();
+      if (data.repId) setCurrentRepId(data.repId);
       setBookings(data.allBookings || []);
     } catch (err) {
       console.error(err);
@@ -188,7 +190,11 @@ export default function RepBookingsSchedule() {
 
                     <td>
                       <span className={`status ${b.status === 'in_progress' ? 'live' : ''}`}>
-                        {b.status === 'in_progress' ? 'In Progress' : b.status.toUpperCase()}
+                        {b.status === 'in_progress'
+                          ? b.assigned_rep_id && currentRepId && b.assigned_rep_id !== currentRepId
+                            ? `In Progress (${b.rep_name || 'Other Rep'})`
+                            : 'In Progress'
+                          : b.status.toUpperCase()}
                       </span>
                     </td>
 
@@ -202,22 +208,42 @@ export default function RepBookingsSchedule() {
                           View details
                         </Link>
                       ) : b.status === 'in_progress' ? (
-                        <Link
-                          href={`/portal/rep/active?bookingId=${b.id}`}
-                          className="button dark"
-                          style={{ padding: '6px 12px', fontSize: 11 }}
-                        >
-                          Resume active →
-                        </Link>
+                        b.assigned_rep_id && currentRepId && b.assigned_rep_id !== currentRepId ? (
+                          <Link
+                            href={`/portal/rep/active?bookingId=${b.id}`}
+                            className="button"
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: 11,
+                              background: '#fffbe6',
+                              color: '#874d00',
+                              border: '1px solid #ffe58f'
+                            }}
+                          >
+                            🔒 View (Locked by {b.rep_name || 'Rep'})
+                          </Link>
+                        ) : (
+                          <Link
+                            href={`/portal/rep/active?bookingId=${b.id}`}
+                            className="button dark"
+                            style={{ padding: '6px 12px', fontSize: 11 }}
+                          >
+                            Resume active →
+                          </Link>
+                        )
                       ) : (
                         <button
                           type="button"
                           className="button dark"
-                          disabled={claimingId === b.id}
+                          disabled={claimingId === b.id || Boolean(b.assigned_rep_id && currentRepId && b.assigned_rep_id !== currentRepId)}
                           onClick={() => handleClaim(b.id)}
                           style={{ padding: '6px 12px', fontSize: 11 }}
                         >
-                          {claimingId === b.id ? 'Claiming…' : 'Claim & Open Job →'}
+                          {claimingId === b.id
+                            ? 'Claiming…'
+                            : b.assigned_rep_id && currentRepId && b.assigned_rep_id !== currentRepId
+                            ? `Claimed by ${b.rep_name}`
+                            : 'Claim & Open Job →'}
                         </button>
                       )}
                     </td>

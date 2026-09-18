@@ -4,6 +4,8 @@ import { SiteFooter, SiteNav } from '@/components/site-shell';
 import { BookingForm } from '@/components/booking-form';
 import { FaqAccordion } from '@/components/faq-accordion';
 import { services } from '@/lib/data';
+import { db } from '@/lib/db/client';
+import type { RowDataPacket } from 'mysql2';
 
 export async function generateStaticParams() {
   return services.map((s) => ({ slug: s.slug }));
@@ -161,6 +163,19 @@ export default async function ServiceDetailPage({
   const service = services.find((s) => s.slug === slug);
   if (!service) notFound();
 
+  let isActive = true;
+  try {
+    const [dbRows] = await db.query<RowDataPacket[]>(
+      'SELECT is_active FROM services WHERE slug = ? LIMIT 1',
+      [slug]
+    );
+    if (dbRows.length > 0 && dbRows[0].is_active !== undefined) {
+      isActive = Boolean(dbRows[0].is_active);
+    }
+  } catch (err) {
+    console.error('Failed to query service status:', err);
+  }
+
   const features = featuresByService[service.slug] || ['Complete multi-point vehicle inspection', 'Professional equipment and pH-balanced chemicals', 'Certified detailing technicians', 'Full satisfaction guarantee on surface finish'];
   const process  = processByService[service.slug] || defaultProcess;
   const faq      = faqByService[service.slug] || defaultFAQ;
@@ -209,9 +224,24 @@ export default async function ServiceDetailPage({
               {service.description}
             </p>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <a href="#book-now" className="button" style={{ background: '#c8f25d', color: '#0d1517', fontWeight: 800 }}>
-                Book from ${service.price} →
-              </a>
+              {isActive ? (
+                <a href="#book-now" className="button" style={{ background: '#c8f25d', color: '#0d1517', fontWeight: 800 }}>
+                  Book from ${service.price} →
+                </a>
+              ) : (
+                <span
+                  className="button"
+                  style={{
+                    background: '#354342',
+                    color: '#9baaa7',
+                    cursor: 'not-allowed',
+                    fontWeight: 700,
+                    border: '1px solid rgba(255,255,255,0.1)'
+                  }}
+                >
+                  Currently Inactive / Unavailable
+                </span>
+              )}
               <Link href="/services" className="button" style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.18)' }}>
                 All services
               </Link>
@@ -377,25 +407,75 @@ export default async function ServiceDetailPage({
 
           {/* ── Booking Form — Follows Home Page CTA scheme ── */}
           <section id="book-now" style={{ marginTop: 76 }}>
-            <div
-              style={{
-                background: '#c8f25d',
-                borderRadius: 20,
-                padding: 'clamp(28px,4vw,44px) clamp(20px,3vw,40px) clamp(24px,3vw,36px)',
-                marginBottom: 32,
-                color: '#0d1517',
-                textAlign: 'center'
-              }}
-            >
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#0d1517', opacity: 0.8, marginBottom: 10 }}>Book online now</div>
-              <h2 style={{ fontSize: 'clamp(22px,3vw,32px)', letterSpacing: -1, margin: '0 0 10px', lineHeight: 1.1, color: '#0d1517' }}>
-                Secure your {service.name} slot
-              </h2>
-              <p style={{ color: '#2b3634', fontSize: 15, maxWidth: 440, margin: '0 auto' }}>
-                Real-time availability. Instant confirmation. No deposit required.
-              </p>
-            </div>
-            <BookingForm defaultServiceSlug={service.slug} />
+            {isActive ? (
+              <>
+                <div
+                  style={{
+                    background: '#c8f25d',
+                    borderRadius: 20,
+                    padding: 'clamp(28px,4vw,44px) clamp(20px,3vw,40px) clamp(24px,3vw,36px)',
+                    marginBottom: 32,
+                    color: '#0d1517',
+                    textAlign: 'center'
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#0d1517', opacity: 0.8, marginBottom: 10 }}>Book online now</div>
+                  <h2 style={{ fontSize: 'clamp(22px,3vw,32px)', letterSpacing: -1, margin: '0 0 10px', lineHeight: 1.1, color: '#0d1517' }}>
+                    Secure your {service.name} slot
+                  </h2>
+                  <p style={{ color: '#2b3634', fontSize: 15, maxWidth: 440, margin: '0 auto' }}>
+                    Real-time availability. Instant confirmation. No deposit required.
+                  </p>
+                </div>
+                <BookingForm defaultServiceSlug={service.slug} />
+              </>
+            ) : (
+              <div
+                style={{
+                  background: '#162224',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: 20,
+                  padding: 'clamp(32px,5vw,50px) clamp(20px,4vw,40px)',
+                  textAlign: 'center',
+                  maxWidth: 680,
+                  margin: '0 auto',
+                  boxShadow: '0 12px 36px rgba(0,0,0,0.3)'
+                }}
+              >
+                <div style={{ fontSize: 40, marginBottom: 12 }}>⏸️</div>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    background: 'rgba(237, 121, 94, 0.15)',
+                    border: '1px solid rgba(237, 121, 94, 0.3)',
+                    color: '#ed795e',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase',
+                    padding: '5px 14px',
+                    borderRadius: 100,
+                    marginBottom: 16
+                  }}
+                >
+                  Bookings Currently Paused
+                </span>
+                <h2 style={{ color: '#ffffff', fontSize: 'clamp(22px,3vw,28px)', margin: '0 0 12px', fontWeight: 800 }}>
+                  {service.name} is Currently Unavailable
+                </h2>
+                <p style={{ color: '#97a8a4', fontSize: 14, maxWidth: 500, margin: '0 auto 24px', lineHeight: 1.65 }}>
+                  This service package is temporarily deactivated or fully booked out. We are not accepting online bookings for this service right now. Please explore our other available detailing packages.
+                </p>
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Link href="/services" className="button" style={{ background: '#c8f25d', color: '#0d1517', fontWeight: 800 }}>
+                    Browse Available Services →
+                  </Link>
+                  <Link href="/booking" className="button" style={{ background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)' }}>
+                    Go to Booking Schedule
+                  </Link>
+                </div>
+              </div>
+            )}
           </section>
         </div>
       </main>

@@ -28,6 +28,9 @@ interface ActiveBooking {
   bill_amount?: number | string;
   service_notes?: string;
   payment_method?: string;
+  assigned_rep_id?: string;
+  rep_name?: string;
+  started_at?: string;
 }
 
 export type ServiceStage = 'before_inspection' | 'service_in_progress' | 'after_inspection' | 'completed';
@@ -75,6 +78,19 @@ async function compressImage(source: string | File, maxDimension = 1200, quality
   });
 }
 
+function parseTimestampMs(ts?: string | Date | null): number | null {
+  if (!ts) return null;
+  if (ts instanceof Date) return ts.getTime();
+  let str = String(ts).trim();
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(str)) {
+    str = str.replace(' ', 'T') + 'Z';
+  } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(str)) {
+    str = str + 'Z';
+  }
+  const parsed = Date.parse(str);
+  return isNaN(parsed) ? null : parsed;
+}
+
 export default function ActivePage() {
   return (
     <Suspense fallback={<div style={{ padding: 40, textAlign: 'center' }}>Loading active bay assignment…</div>}>
@@ -88,6 +104,8 @@ function ActiveServiceContent() {
   const paramBookingId = searchParams.get('bookingId');
 
   const [booking, setBooking] = useState<ActiveBooking | null>(null);
+  const [currentRepId, setCurrentRepId] = useState<string>('');
+  const [currentRepName, setCurrentRepName] = useState<string>('');
   const [loadingBooking, setLoadingBooking] = useState(true);
 
   // 4-stage Detailing Lifecycle
@@ -127,6 +145,8 @@ function ActiveServiceContent() {
       const res = await fetch('/api/rep/bookings');
       if (!res.ok) throw new Error('Failed to load rep bookings');
       const data = await res.json();
+      if (data.repId) setCurrentRepId(data.repId);
+      if (data.repName) setCurrentRepName(data.repName);
 
       let target: ActiveBooking | null = null;
       if (paramBookingId) {
@@ -147,6 +167,7 @@ function ActiveServiceContent() {
 
         if (target.status === 'completed') {
           setFinished(true);
+          setStarted(false);
           setStage('completed');
           if (target.bill_amount) setBill(Number(target.bill_amount).toFixed(2));
           if (target.service_notes) setNotes(target.service_notes);
@@ -154,12 +175,44 @@ function ActiveServiceContent() {
         } else if (target.status === 'in_progress') {
           setStage('service_in_progress');
           setStarted(true);
+          if (target.started_at) {
+            const startMs = parseTimestampMs(target.started_at);
+            if (startMs) {
+              const elapsed = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+              setSecs((prev) => Math.max(prev, elapsed));
+            }
+          }
         } else {
           // Brand new scheduled or claimed appointment: Rep starts at before_inspection!
           setStage('before_inspection');
           setStarted(false);
           setSecs(0);
         }
+
+        // Fetch any existing photos already recorded for this booking
+        fetch(`/api/booking-photos?bookingId=${target.id}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((pData) => {
+            if (pData?.photos && Array.isArray(pData.photos)) {
+              const befores: CapturedPhoto[] = pData.photos
+                .filter((p: { type: string }) => p.type === 'before')
+                .map((p: { id: string; dataUrl: string; timestamp: string }) => ({
+                  id: p.id,
+                  dataUrl: p.dataUrl,
+                  timestamp: p.timestamp
+                }));
+              const afters: CapturedPhoto[] = pData.photos
+                .filter((p: { type: string }) => p.type === 'after')
+                .map((p: { id: string; dataUrl: string; timestamp: string }) => ({
+                  id: p.id,
+                  dataUrl: p.dataUrl,
+                  timestamp: p.timestamp
+                }));
+              if (befores.length > 0) setBeforePhotos(befores);
+              if (afters.length > 0) setAfterPhotos(afters);
+            }
+          })
+          .catch(() => {});
       } else {
         setBooking(null);
       }
@@ -174,39 +227,72 @@ function ActiveServiceContent() {
     void loadBooking();
   }, [loadBooking]);
 
-  // Active service timer - strictly ticks only while in service_in_progress
+  // Concurrency lock check: Is this job claimed/started by another rep?
+  const isLockedByOtherRep = Boolean(
+    booking?.assigned_rep_id &&
+    currentRepId &&
+    booking.assigned_rep_id !== currentRepId
+  );
+
+  // Detailing stopwatch:
+  // Starts when "Start Job" is clicked (started === true).
+  // Runs continuously through detailing AND after photo capturing,
+  // until the "End Job" button is clicked and finished === true.
   useEffect(() => {
-    if (stage !== 'service_in_progress' || !started || finished) return;
-    const interval = setInterval(() => setSecs((s) => s + 1), 1000);
+    if (!started || finished) return;
+
+    const tick = () => {
+      if (booking?.started_at) {
+        const startMs = parseTimestampMs(booking.started_at);
+        if (startMs) {
+          const elapsed = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+          setSecs((prev) => Math.max(prev + 1, elapsed));
+          return;
+        }
+      }
+      setSecs((s) => s + 1);
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [stage, started, finished]);
+  }, [started, finished, booking?.started_at]);
 
   const formattedTime = `${String(Math.floor(secs / 3600)).padStart(2, '0')}:${String(
     Math.floor((secs % 3600) / 60)
   ).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
 
-  // Start Detailing Service stopwatch
+  // Start Detailing Service stopwatch (Works ONLY after Before photos are added)
   const handleStartService = async () => {
-    if (!booking) return;
+    if (!booking || isLockedByOtherRep || beforePhotos.length === 0) return;
     setStartingService(true);
-    setStage('service_in_progress');
-    setStarted(true);
+    setCompletionError('');
     try {
-      await fetch('/api/rep/bookings', {
+      const res = await fetch('/api/rep/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: booking.id, action: 'start' })
+        body: JSON.stringify({
+          bookingId: booking.id,
+          action: 'start',
+          beforePhotos: beforePhotos.map((p) => p.dataUrl)
+        })
       });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const startIso = data?.started_at || new Date().toISOString();
+        setStage('service_in_progress');
+        setStarted(true);
+        setBooking((prev) => (prev ? { ...prev, started_at: startIso, status: 'in_progress' } : null));
+        void loadBooking();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setCompletionError(data?.error || 'Failed to start detailing service');
+      }
     } catch (err) {
       console.error('Failed to record service start:', err);
     } finally {
       setStartingService(false);
     }
-  };
-
-  // Complete Detailing & Move to After Photos
-  const handleFinishDetailing = () => {
-    setStage('after_inspection');
   };
 
   // Validation rules for ending service
@@ -216,7 +302,9 @@ function ActiveServiceContent() {
   const hasNotes = notes.trim().length > 0;
 
   const canFinish =
-    (stage === 'after_inspection' || stage === 'service_in_progress') &&
+    !isLockedByOtherRep &&
+    started &&
+    !finished &&
     hasAfterPhotos &&
     hasValidBill &&
     hasPaymentMethod &&
@@ -435,19 +523,43 @@ function ActiveServiceContent() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span className={`status ${finished ? '' : stage === 'service_in_progress' ? 'live' : ''}`}>
+          <span className={`status ${finished ? '' : started ? 'live' : ''}`}>
             {finished
               ? '✓ COMPLETED & SAVED TO DB'
-              : stage === 'service_in_progress'
+              : started
               ? '● DETAILING IN PROGRESS'
-              : stage === 'after_inspection'
-              ? '● QUALITY CHECK & BILLING'
               : '● PRE-SERVICE INSPECTION'}
           </span>
         </div>
       </header>
 
       <section className="panel" style={{ maxWidth: 840 }}>
+        {/* Concurrency Lock Banner */}
+        {isLockedByOtherRep && (
+          <div
+            style={{
+              background: '#fffbe6',
+              border: '1px solid #ffe58f',
+              borderRadius: 12,
+              padding: '16px 20px',
+              marginBottom: 20,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14
+            }}
+          >
+            <div style={{ fontSize: 28 }}>🔒</div>
+            <div>
+              <div style={{ fontWeight: 800, color: '#874d00', fontSize: 14 }}>
+                Job in Progress by {booking.rep_name || 'Another Representative'}
+              </div>
+              <div style={{ color: '#ad6800', fontSize: 12, marginTop: 3, lineHeight: 1.4 }}>
+                This detailing bay was claimed and opened by {booking.rep_name || 'another representative'}. You have read-only visibility. You can observe the live timer and recorded photos, but editing, camera uploads, and checkout are locked.
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 4-Step Progress Stepper */}
         <div
           className="stepper-grid"
@@ -462,8 +574,8 @@ function ActiveServiceContent() {
               padding: '10px 8px',
               borderRadius: 10,
               textAlign: 'center',
-              background: stage === 'before_inspection' ? '#102021' : '#f0f4ef',
-              color: stage === 'before_inspection' ? '#c8f25d' : '#667376',
+              background: !started && !finished ? '#102021' : '#f0f4ef',
+              color: !started && !finished ? '#c8f25d' : '#667376',
               fontSize: 12,
               fontWeight: 700
             }}
@@ -476,13 +588,13 @@ function ActiveServiceContent() {
               padding: '10px 8px',
               borderRadius: 10,
               textAlign: 'center',
-              background: stage === 'service_in_progress' ? '#102021' : '#f0f4ef',
-              color: stage === 'service_in_progress' ? '#c8f25d' : '#667376',
+              background: started && !finished ? '#102021' : '#f0f4ef',
+              color: started && !finished ? '#c8f25d' : '#667376',
               fontSize: 12,
               fontWeight: 700
             }}
           >
-            2. Detailing Timer {stage === 'after_inspection' || stage === 'completed' ? '✓' : ''}
+            2. Detailing Stopwatch {started ? '✓' : ''}
           </div>
 
           <div
@@ -490,8 +602,8 @@ function ActiveServiceContent() {
               padding: '10px 8px',
               borderRadius: 10,
               textAlign: 'center',
-              background: stage === 'after_inspection' ? '#102021' : '#f0f4ef',
-              color: stage === 'after_inspection' ? '#c8f25d' : '#667376',
+              background: started && !finished && afterPhotos.length > 0 ? '#102021' : '#f0f4ef',
+              color: started && !finished && afterPhotos.length > 0 ? '#c8f25d' : '#667376',
               fontSize: 12,
               fontWeight: 700
             }}
@@ -504,8 +616,8 @@ function ActiveServiceContent() {
               padding: '10px 8px',
               borderRadius: 10,
               textAlign: 'center',
-              background: stage === 'completed' ? '#102021' : '#f0f4ef',
-              color: stage === 'completed' ? '#c8f25d' : '#667376',
+              background: finished ? '#102021' : '#f0f4ef',
+              color: finished ? '#c8f25d' : '#667376',
               fontSize: 12,
               fontWeight: 700
             }}
@@ -554,8 +666,8 @@ function ActiveServiceContent() {
             {/* Live Detailing Stopwatch */}
             <div
               style={{
-                background: stage === 'service_in_progress' ? '#102021' : '#f0f3ef',
-                color: stage === 'service_in_progress' ? '#c8f25d' : '#455552',
+                background: started && !finished ? '#102021' : '#f0f3ef',
+                color: started && !finished ? '#c8f25d' : '#455552',
                 borderRadius: 18,
                 padding: '24px 20px',
                 textAlign: 'center',
@@ -563,29 +675,22 @@ function ActiveServiceContent() {
                 transition: 'all 0.3s ease'
               }}
             >
-              <div className="eyebrow" style={{ color: stage === 'service_in_progress' ? '#a0b8b2' : '#71827e', marginBottom: 4 }}>
-                {stage === 'service_in_progress'
-                  ? '⏱ Live Detailing In Progress · Elapsed Stopwatch Duration'
-                  : stage === 'after_inspection'
-                  ? '⏱ Detailing Completed · Total Service Time'
+              <div className="eyebrow" style={{ color: started && !finished ? '#a0b8b2' : '#71827e', marginBottom: 4 }}>
+                {started && !finished
+                  ? '⏱ Live Detailing In Progress · Stopwatch Running'
                   : '⏱ Detailing Stopwatch (Ready to Begin)'}
               </div>
               <div style={{ fontSize: 56, letterSpacing: -3, fontWeight: 800, fontFamily: 'monospace' }}>
                 {formattedTime}
               </div>
-              {stage === 'before_inspection' && (
+              {!started && (
                 <p style={{ margin: '8px 0 0', fontSize: 13, color: '#687774' }}>
                   Capture initial Before inspection photos below. When ready, click &quot;Start Detailing Service&quot; to begin the stopwatch.
                 </p>
               )}
-              {stage === 'service_in_progress' && (
+              {started && (
                 <p style={{ margin: '8px 0 0', fontSize: 13, color: '#c8f25d' }}>
-                  Detailing stopwatch is running. Carry out detailing work, wash, machine polish, or coating.
-                </p>
-              )}
-              {stage === 'after_inspection' && (
-                <p style={{ margin: '8px 0 0', fontSize: 13, color: '#2e7d32', fontWeight: 600 }}>
-                  ✓ Detailing finished. Capture After photos and finalize billing to generate the ATO Tax Invoice.
+                  ● Detailing stopwatch is actively ticking. It will keep running continuously until you add After photos and click &quot;End Job&quot; below.
                 </p>
               )}
             </div>
@@ -616,146 +721,12 @@ function ActiveServiceContent() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-                  <button
-                    type="button"
-                    className="button"
-                    onClick={() => openCamera('before')}
-                    style={{ background: '#102021', color: '#fff', fontSize: 12, padding: '10px 16px' }}
-                  >
-                    📷 Open camera & click pic
-                  </button>
-
-                  <label className="button" style={{ background: '#e8ede7', fontSize: 12, padding: '10px 16px', cursor: 'pointer' }}>
-                    📁 Choose files
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={(e) => handleFilesChosen(e, 'before')}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
-                </div>
-
-                {beforePhotos.length > 0 ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 10 }}>
-                    {beforePhotos.map((photo) => (
-                      <div key={photo.id} style={{ position: 'relative', height: 80, borderRadius: 8, overflow: 'hidden', border: '1px solid #d0d7cf' }}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={photo.dataUrl} alt="Before inspection" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        <button
-                          type="button"
-                          onClick={() => removePhoto(photo.id, 'before')}
-                          style={{
-                            position: 'absolute',
-                            top: 4,
-                            right: 4,
-                            background: 'rgba(0,0,0,0.75)',
-                            color: '#fff',
-                            border: 0,
-                            borderRadius: '50%',
-                            width: 20,
-                            height: 20,
-                            fontSize: 11,
-                            display: 'grid',
-                            placeContent: 'center',
-                            cursor: 'pointer'
-                          }}
-                          title="Delete photo"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 12, color: '#889895', fontStyle: 'italic' }}>
-                    No before photos added yet. Use the camera or upload files.
-                  </div>
-                )}
-              </div>
-
-              {/* Step 2: Detailing Start Button if in before_inspection */}
-              {stage === 'before_inspection' && (
-                <div className="field full" style={{ marginTop: 6, marginBottom: 12 }}>
-                  <button
-                    className="button dark"
-                    type="button"
-                    onClick={handleStartService}
-                    disabled={startingService}
-                    style={{
-                      width: '100%',
-                      justifyContent: 'center',
-                      padding: 16,
-                      fontSize: 15,
-                      fontWeight: 700,
-                      background: '#1d6960'
-                    }}
-                  >
-                    {startingService ? 'Starting detailing…' : '▶ Start Detailing Service (Start Stopwatch) →'}
-                  </button>
-                  <small style={{ display: 'block', textAlign: 'center', color: '#667376', marginTop: 8 }}>
-                    Once vehicle inspection is complete, click above to start the stopwatch. The After Photos section will unlock upon service progress.
-                  </small>
-                </div>
-              )}
-
-              {/* Step 3: After Photos Section (Locked during before_inspection) */}
-              {stage === 'before_inspection' ? (
-                <div
-                  className="field full"
-                  style={{
-                    background: '#f8faf8',
-                    padding: 18,
-                    borderRadius: 14,
-                    border: '1px dashed #cdd8cd',
-                    opacity: 0.75
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <label style={{ fontSize: 14, margin: 0, fontWeight: 700, color: '#778885' }}>
-                        🔒 3. After Finish Photos (Locked)
-                      </label>
-                      <small style={{ color: '#889895' }}>
-                        Unlocks once detailing service is underway. Capture Before photos first and click &quot;Start Detailing Service&quot; above.
-                      </small>
-                    </div>
-                    <span style={{ fontSize: 11, background: '#e0e8e0', padding: '4px 8px', borderRadius: 6, fontWeight: 700, color: '#556663' }}>
-                      Step 3
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  className="field full"
-                  style={{
-                    background: stage === 'after_inspection' ? '#fbfdfa' : '#fafbf9',
-                    padding: 18,
-                    borderRadius: 14,
-                    border: stage === 'after_inspection' ? '2px solid #b8dbb8' : '1px solid #e2e8e2'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <div>
-                      <label style={{ fontSize: 14, margin: 0, fontWeight: 800 }}>
-                        3. After Finish Photos{' '}
-                        {afterPhotos.length > 0 ? (
-                          <span style={{ color: '#2e7d32' }}>✓ ({afterPhotos.length} recorded)</span>
-                        ) : (
-                          <span style={{ color: '#be4635' }}>* Required before checkout</span>
-                        )}
-                      </label>
-                      <small style={{ color: '#667376' }}>High-res finish photos showing glossy, completed surfaces (saved to DB and gallery).</small>
-                    </div>
-                  </div>
-
+                {!isLockedByOtherRep ? (
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
                     <button
                       type="button"
                       className="button"
-                      onClick={() => openCamera('after')}
+                      onClick={() => openCamera('before')}
                       style={{ background: '#102021', color: '#fff', fontSize: 12, padding: '10px 16px' }}
                     >
                       📷 Open camera & click pic
@@ -767,21 +738,27 @@ function ActiveServiceContent() {
                         type="file"
                         accept="image/*"
                         multiple
-                        onChange={(e) => handleFilesChosen(e, 'after')}
+                        onChange={(e) => handleFilesChosen(e, 'before')}
                         style={{ display: 'none' }}
                       />
                     </label>
                   </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: '#778885', fontStyle: 'italic', marginBottom: 12 }}>
+                    🔒 Photo uploads locked (assigned to {booking.rep_name || 'other representative'})
+                  </div>
+                )}
 
-                  {afterPhotos.length > 0 ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 10 }}>
-                      {afterPhotos.map((photo) => (
-                        <div key={photo.id} style={{ position: 'relative', height: 80, borderRadius: 8, overflow: 'hidden', border: '1px solid #d0d7cf' }}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={photo.dataUrl} alt="After detail completed" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                {beforePhotos.length > 0 ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 10 }}>
+                    {beforePhotos.map((photo) => (
+                      <div key={photo.id} style={{ position: 'relative', height: 80, borderRadius: 8, overflow: 'hidden', border: '1px solid #d0d7cf' }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={photo.dataUrl} alt="Before inspection" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        {!isLockedByOtherRep && (
                           <button
                             type="button"
-                            onClick={() => removePhoto(photo.id, 'after')}
+                            onClick={() => removePhoto(photo.id, 'before')}
                             style={{
                               position: 'absolute',
                               top: 4,
@@ -801,6 +778,165 @@ function ActiveServiceContent() {
                           >
                             ✕
                           </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: '#889895', fontStyle: 'italic' }}>
+                    No before photos added yet. Use the camera or upload files.
+                  </div>
+                )}
+              </div>
+
+              {/* Step 2: Detailing Start Button if not started */}
+              {!started && (
+                <div className="field full" style={{ marginTop: 6, marginBottom: 12 }}>
+                  <button
+                    className="button dark"
+                    type="button"
+                    onClick={handleStartService}
+                    disabled={startingService || isLockedByOtherRep || beforePhotos.length === 0}
+                    style={{
+                      width: '100%',
+                      justifyContent: 'center',
+                      padding: 16,
+                      fontSize: 15,
+                      fontWeight: 700,
+                      background: isLockedByOtherRep
+                        ? '#667774'
+                        : beforePhotos.length === 0
+                        ? '#889895'
+                        : '#1d6960',
+                      cursor: isLockedByOtherRep || beforePhotos.length === 0 ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {isLockedByOtherRep
+                      ? `🔒 Locked: Assigned to ${booking.rep_name || 'Another Representative'}`
+                      : startingService
+                      ? 'Starting detailing & stopwatch…'
+                      : beforePhotos.length === 0
+                      ? '▶ Start Job (Locked: Please add Before Photos first)'
+                      : '▶ Start Job (Start Detailing Timer) →'}
+                  </button>
+                  <small style={{ display: 'block', textAlign: 'center', color: '#667376', marginTop: 8 }}>
+                    {isLockedByOtherRep
+                      ? 'Only the assigned technician or a Studio Administrator can conduct this service.'
+                      : beforePhotos.length === 0
+                      ? '⚠️ Step 1 Required: Use camera or upload files above to add before photos. The "Start Job" button will then unlock to start the timer.'
+                      : '✓ Before photos recorded. Click "Start Job" above to begin the stopwatch and commence detailing work.'}
+                  </small>
+                </div>
+              )}
+
+              {/* Step 3: After Photos Section (Locked until Start Job is clicked) */}
+              {!started ? (
+                <div
+                  className="field full"
+                  style={{
+                    background: '#f8faf8',
+                    padding: 18,
+                    borderRadius: 14,
+                    border: '1px dashed #cdd8cd',
+                    opacity: 0.75
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <label style={{ fontSize: 14, margin: 0, fontWeight: 700, color: '#778885' }}>
+                        🔒 2. After Finish Photos (Locked)
+                      </label>
+                      <small style={{ color: '#889895' }}>
+                        Unlocks once you click &quot;Start Job&quot;. The stopwatch will continue running while you capture After photos.
+                      </small>
+                    </div>
+                    <span style={{ fontSize: 11, background: '#e0e8e0', padding: '4px 8px', borderRadius: 6, fontWeight: 700, color: '#556663' }}>
+                      Step 2
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="field full"
+                  style={{
+                    background: '#fbfdfa',
+                    padding: 18,
+                    borderRadius: 14,
+                    border: afterPhotos.length > 0 ? '2px solid #b8dbb8' : '1px solid #e2e8e2'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <div>
+                      <label style={{ fontSize: 14, margin: 0, fontWeight: 800 }}>
+                        2. After Finish Photos{' '}
+                        {afterPhotos.length > 0 ? (
+                          <span style={{ color: '#2e7d32' }}>✓ ({afterPhotos.length} recorded)</span>
+                        ) : (
+                          <span style={{ color: '#be4635' }}>* Required to unlock End Job</span>
+                        )}
+                      </label>
+                      <small style={{ color: '#667376' }}>High-res finish photos showing glossy, completed surfaces (stopwatch keeps running).</small>
+                    </div>
+                  </div>
+
+                  {!isLockedByOtherRep ? (
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+                      <button
+                        type="button"
+                        className="button"
+                        onClick={() => openCamera('after')}
+                        style={{ background: '#102021', color: '#fff', fontSize: 12, padding: '10px 16px' }}
+                      >
+                        📷 Open camera & click pic
+                      </button>
+
+                      <label className="button" style={{ background: '#e8ede7', fontSize: 12, padding: '10px 16px', cursor: 'pointer' }}>
+                        📁 Choose files
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={(e) => handleFilesChosen(e, 'after')}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: '#778885', fontStyle: 'italic', marginBottom: 12 }}>
+                      🔒 Photo uploads locked (assigned to {booking.rep_name || 'other representative'})
+                    </div>
+                  )}
+
+                  {afterPhotos.length > 0 ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 10 }}>
+                      {afterPhotos.map((photo) => (
+                        <div key={photo.id} style={{ position: 'relative', height: 80, borderRadius: 8, overflow: 'hidden', border: '1px solid #d0d7cf' }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={photo.dataUrl} alt="After detail completed" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          {!isLockedByOtherRep && (
+                            <button
+                              type="button"
+                              onClick={() => removePhoto(photo.id, 'after')}
+                              style={{
+                                position: 'absolute',
+                                top: 4,
+                                right: 4,
+                                background: 'rgba(0,0,0,0.75)',
+                                color: '#fff',
+                                border: 0,
+                                borderRadius: '50%',
+                                width: 20,
+                                height: 20,
+                                fontSize: 11,
+                                display: 'grid',
+                                placeContent: 'center',
+                                cursor: 'pointer'
+                              }}
+                              title="Delete photo"
+                            >
+                              ✕
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -821,7 +957,7 @@ function ActiveServiceContent() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Detail what was completed: e.g. Two-stage machine polish completed, leather cleaned & conditioned with UV guard, glass sealed."
-                  disabled={stage === 'before_inspection'}
+                  disabled={!started || isLockedByOtherRep}
                   rows={3}
                 />
               </div>
@@ -837,7 +973,7 @@ function ActiveServiceContent() {
                   type="number"
                   min="0.01"
                   step="0.01"
-                  disabled={stage === 'before_inspection'}
+                  disabled={!started || isLockedByOtherRep}
                   placeholder="189.00"
                 />
               </div>
@@ -849,7 +985,7 @@ function ActiveServiceContent() {
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
-                  disabled={stage === 'before_inspection'}
+                  disabled={!started || isLockedByOtherRep}
                 >
                   <option value="card">Card / EFTPOS / Tap & Go</option>
                   <option value="invoice">Send Official Tax Invoice via Email</option>
@@ -859,12 +995,12 @@ function ActiveServiceContent() {
               </div>
 
               <div className="field full">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: !started || isLockedByOtherRep ? 'not-allowed' : 'pointer' }}>
                   <input
                     type="checkbox"
                     checked={customerPresent}
                     onChange={(e) => setCustomerPresent(e.target.checked)}
-                    disabled={stage === 'before_inspection'}
+                    disabled={!started || isLockedByOtherRep}
                     style={{ width: 'auto' }}
                   />
                   <span>Customer was present for final inspection and signed off on quality.</span>
@@ -872,30 +1008,8 @@ function ActiveServiceContent() {
               </div>
             </div>
 
-            {/* In-Progress Transition Controls */}
-            {stage === 'service_in_progress' && (
-              <div style={{ marginTop: 20, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className="button"
-                  onClick={() => setStarted((s) => !s)}
-                  style={{ flex: 1, minWidth: 130, justifyContent: 'center', padding: 14, background: '#e8ede7' }}
-                >
-                  {started ? '⏸ Pause Timer' : '▶ Resume Timer'}
-                </button>
-                <button
-                  type="button"
-                  className="button dark"
-                  onClick={handleFinishDetailing}
-                  style={{ flex: 2, minWidth: 200, justifyContent: 'center', padding: 14, background: '#1d6960' }}
-                >
-                  🏁 Finish Detailing & Begin After Photos →
-                </button>
-              </div>
-            )}
-
             {/* Checklist of Prerequisites to End Service */}
-            {(stage === 'after_inspection' || stage === 'service_in_progress') && (
+            {started && (
               <div
                 style={{
                   marginTop: 20,
@@ -906,7 +1020,9 @@ function ActiveServiceContent() {
                 }}
               >
                 <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8, color: canFinish ? '#1e5e22' : '#945318' }}>
-                  {canFinish
+                  {isLockedByOtherRep
+                    ? `🔒 Job is claimed and managed by ${booking.rep_name || 'another representative'}.`
+                    : canFinish
                     ? '✓ All completion requirements satisfied. Ready to end service and record into DB.'
                     : 'Prerequisites required to unlock "End service":'}
                 </div>
@@ -933,8 +1049,8 @@ function ActiveServiceContent() {
               </div>
             )}
 
-            {/* Final Action Button */}
-            {(stage === 'after_inspection' || stage === 'service_in_progress') && (
+            {/* Final Action Button: End Job */}
+            {started && (
               <div className="form-actions" style={{ marginTop: 24 }}>
                 <button
                   className="button dark"
@@ -945,16 +1061,21 @@ function ActiveServiceContent() {
                     width: '100%',
                     justifyContent: 'center',
                     padding: 16,
-                    background: canFinish ? '#102021' : '#b2bebc',
+                    background: canFinish ? '#102021' : '#889895',
                     cursor: canFinish ? 'pointer' : 'not-allowed',
-                    fontSize: 15
+                    fontSize: 15,
+                    fontWeight: 800
                   }}
                 >
-                  {savingCompletion
+                  {isLockedByOtherRep
+                    ? `🔒 Service Locked: In Progress by ${booking.rep_name || 'Assigned Representative'}`
+                    : savingCompletion
                     ? 'Recording job completion in database…'
+                    : afterPhotos.length === 0
+                    ? '🏁 End Job (Locked: Please add at least 1 After Photo first)'
                     : canFinish
-                    ? '✓ End Service & Generate Australian Tax Receipt →'
-                    : 'End service (locked until at least 1 after photo & all billing details completed)'}
+                    ? '🏁 End Job & Generate Australian Tax Receipt →'
+                    : '🏁 End Job (Locked: Complete After Photos and Billing Details)'}
                 </button>
               </div>
             )}

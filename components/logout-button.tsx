@@ -16,6 +16,10 @@ export function LogoutButton({
   const handleLogout = async () => {
     try {
       setLoggingOut(true);
+      try {
+        localStorage.removeItem('autolustre_user_admin');
+        localStorage.removeItem('autolustre_user_rep');
+      } catch {}
       await fetch('/api/auth/logout', { method: 'POST' });
       router.push('/');
       router.refresh();
