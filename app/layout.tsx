@@ -149,7 +149,7 @@ const jsonLd = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en-AU">
+    <html lang="en-AU" data-scroll-behavior="smooth">
       <head>
         <script
           type="application/ld+json"
